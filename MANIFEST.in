@@ -1,0 +1,5 @@
+include README.md
+include Makefile
+
+recursive-include src/covid-model-deaths *.py
+recursive-include tests *.py
