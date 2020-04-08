@@ -6,6 +6,10 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   inputs
+   transformations
+   outputs
+
 
 
 Indices and tables
