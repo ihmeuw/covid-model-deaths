@@ -124,6 +124,7 @@ Input Overview
    * - us_pops
      - /ihme/covid-19/model-inputs/{data_version}/us_pops.csv
      - covid-input-etl
+     - Versioned by etl tool
      - + Province/State: String.  The name of the state.
        + age_group: 10 year increments starting at 0 except for the last bin
          which is "80-125".
