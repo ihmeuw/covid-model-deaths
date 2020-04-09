@@ -140,12 +140,13 @@ class DeathModelData:
         # make sure we don't have naming problem
         # TODO: Check preconditions on data sets well before this.  Use
         #  proper errors.
-        assert ((len(df[['Location']].drop_duplicates())
-                 == len(df[['location_id']].drop_duplicates())
-                 == len(df[['Country/Region', 'Location']].drop_duplicates())
-                 == len(df[['location_id', 'Country/Region', 'Location']].drop_duplicates())),
-                ('Location, location_id, Country/Region + Location, and location_id + Country/Region + Location '
-                 'are not all acceptible keys. I assume this is true, check why not.'))
+        assert (len(df[['Location']].drop_duplicates())
+                == len(df[['location_id']].drop_duplicates())
+                == len(df[['Country/Region', 'Location']].drop_duplicates())
+                == len(df[['location_id', 'Country/Region', 'Location']].drop_duplicates())), (
+            'Location, location_id, Country/Region + Location, and location_id + Country/Region + Location '
+            'are not all acceptible keys. I assume this is true, check why not.'
+        )
 
         # get implied death rate based on "standard" population (using average
         # of all possible locations atm)
