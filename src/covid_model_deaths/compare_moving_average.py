@@ -1,21 +1,25 @@
-import os
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages 
+from matplotlib.backends.backend_pdf import PdfPages
 
 
-def fill_draw(df):
+def fill_draw(df: pd.DataFrame) -> pd.DataFrame:
+    # FIXME: Yikes, what's this about?
     if 'draw_999' not in df.columns:
         df['draw_999'] = df['draw_998']
     return df
 
+
 class CompareAveragingModelDeaths:
-    def __init__(self, raw_draw_path, average_draw_path,
-        yesterday_draw_path, before_yesterday_draw_path,
-        draws=[f'draw_{i}' for i in range(1000)]):
+    """Compare current model results to previous results."""
+
+    def __init__(self, raw_draw_path: str, average_draw_path: str,
+                 yesterday_draw_path: str, before_yesterday_draw_path: str,
+                 draws: List[str] = [f'draw_{i}' for i in range(1000)]):
         self.old_df = pd.read_csv(raw_draw_path)
         self.old_df = fill_draw(self.old_df)
         self.new_df = pd.read_csv(average_draw_path)
@@ -27,9 +31,9 @@ class CompareAveragingModelDeaths:
         self.draws = draws
 
     @staticmethod
-    def _get_deaths_per_day(draw_df, draws):
+    def _get_deaths_per_day(draw_df: pd.DataFrame, draws: List[str]) -> pd.DataFrame:
         draw_df = draw_df.sort_values(['location', 'date']).reset_index(drop=True).copy()
-        delta = draw_df[draws].values[1:,:] - draw_df[draws].values[:-1,:]
+        delta = draw_df[draws].values[1:, :] - draw_df[draws].values[:-1,:]
         draw_df.iloc[1:][draws] = delta
         draw_df['day0'] = draw_df.groupby('location', as_index=False)['date'].transform('min')
         draw_df = draw_df.loc[draw_df['date'] != draw_df['day0']]
@@ -39,7 +43,7 @@ class CompareAveragingModelDeaths:
 
         return draw_df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
 
-    def _summarize(self, agg_location, df):
+    def _summarize(self, agg_location: Optional[str], df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         df['date'] = pd.to_datetime(df['date'])
         if agg_location is not None:
             agg_old_df = df.groupby('date', as_index=False)[self.draws].sum()
@@ -54,7 +58,9 @@ class CompareAveragingModelDeaths:
         df = df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
         return df, daily_df
 
-    def _summarize_draws(self, agg_location):
+    def _summarize_draws(self, agg_location: Optional[str]) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
+                                                                     pd.DataFrame, pd.DataFrame, pd.DataFrame,
+                                                                     pd.DataFrame, pd.DataFrame]:
         old_df = self.old_df.copy()
         old_df, old_daily_df = self._summarize(agg_location, old_df)
 
@@ -67,10 +73,10 @@ class CompareAveragingModelDeaths:
         before_yesterday_df = self.before_yesterday_df.copy()
         before_yesterday_df, before_yesterday_daily_df = self._summarize(agg_location, before_yesterday_df)
 
-        return (old_df, old_daily_df, new_df, new_daily_df, 
+        return (old_df, old_daily_df, new_df, new_daily_df,
                 yesterday_df, yesterday_daily_df, before_yesterday_df, before_yesterday_daily_df)
 
-    def make_some_pictures(self, pdf_out_path, agg_location=None):
+    def make_some_pictures(self, pdf_out_path: str, agg_location: str = None) -> None:
         old_df, old_daily_df, new_df, new_daily_df, \
             yesterday_df, yesterday_daily_df, before_yesterday_df, before_yesterday_daily_df \
              = self._summarize_draws(agg_location)
@@ -80,7 +86,7 @@ class CompareAveragingModelDeaths:
                 # cumulative
                 ax[0].fill_between(
                     old_df.loc[old_df['location'] == location, 'date'],
-                    old_df.loc[old_df['location'] == location, 'val_lower'], 
+                    old_df.loc[old_df['location'] == location, 'val_lower'],
                     old_df.loc[old_df['location'] == location, 'val_upper'],
                     alpha=0.25, color='dodgerblue'
                 )
@@ -91,7 +97,7 @@ class CompareAveragingModelDeaths:
                 )
                 ax[0].fill_between(
                     new_df.loc[new_df['location'] == location, 'date'],
-                    new_df.loc[new_df['location'] == location, 'val_lower'], 
+                    new_df.loc[new_df['location'] == location, 'val_lower'],
                     new_df.loc[new_df['location'] == location, 'val_upper'],
                     alpha=0.25, color='firebrick'
                 )
@@ -103,7 +109,7 @@ class CompareAveragingModelDeaths:
 
                 ax[0].fill_between(
                     yesterday_df.loc[yesterday_df['location'] == location, 'date'],
-                    yesterday_df.loc[yesterday_df['location'] == location, 'val_lower'], 
+                    yesterday_df.loc[yesterday_df['location'] == location, 'val_lower'],
                     yesterday_df.loc[yesterday_df['location'] == location, 'val_upper'],
                     alpha=0.15, color='limegreen'
                 )
@@ -115,7 +121,7 @@ class CompareAveragingModelDeaths:
 
                 ax[0].fill_between(
                     before_yesterday_df.loc[before_yesterday_df['location'] == location, 'date'],
-                    before_yesterday_df.loc[before_yesterday_df['location'] == location, 'val_lower'], 
+                    before_yesterday_df.loc[before_yesterday_df['location'] == location, 'val_lower'],
                     before_yesterday_df.loc[before_yesterday_df['location'] == location, 'val_upper'],
                     alpha=0.15, color='khaki'
                 )
@@ -131,7 +137,7 @@ class CompareAveragingModelDeaths:
                 # daily
                 ax[1].fill_between(
                     old_daily_df.loc[old_daily_df['location'] == location, 'date'],
-                    old_daily_df.loc[old_daily_df['location'] == location, 'val_lower'], 
+                    old_daily_df.loc[old_daily_df['location'] == location, 'val_lower'],
                     old_daily_df.loc[old_daily_df['location'] == location, 'val_upper'],
                     alpha=0.25, color='dodgerblue'
                 )
@@ -143,7 +149,7 @@ class CompareAveragingModelDeaths:
 
                 ax[1].fill_between(
                     new_daily_df.loc[new_daily_df['location'] == location, 'date'],
-                    new_daily_df.loc[new_daily_df['location'] == location, 'val_lower'], 
+                    new_daily_df.loc[new_daily_df['location'] == location, 'val_lower'],
                     new_daily_df.loc[new_daily_df['location'] == location, 'val_upper'],
                     alpha=0.25, color='firebrick'
                 )
@@ -155,7 +161,7 @@ class CompareAveragingModelDeaths:
 
                 ax[1].fill_between(
                     yesterday_daily_df.loc[yesterday_daily_df['location'] == location, 'date'],
-                    yesterday_daily_df.loc[yesterday_daily_df['location'] == location, 'val_lower'], 
+                    yesterday_daily_df.loc[yesterday_daily_df['location'] == location, 'val_lower'],
                     yesterday_daily_df.loc[yesterday_daily_df['location'] == location, 'val_upper'],
                     alpha=0.15, color='limegreen'
                 )
@@ -167,7 +173,7 @@ class CompareAveragingModelDeaths:
 
                 ax[1].fill_between(
                     before_yesterday_daily_df.loc[before_yesterday_daily_df['location'] == location, 'date'],
-                    before_yesterday_daily_df.loc[before_yesterday_daily_df['location'] == location, 'val_lower'], 
+                    before_yesterday_daily_df.loc[before_yesterday_daily_df['location'] == location, 'val_lower'],
                     before_yesterday_daily_df.loc[before_yesterday_daily_df['location'] == location, 'val_upper'],
                     alpha=0.15, color='khaki'
                 )
