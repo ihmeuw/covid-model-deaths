@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -43,7 +43,7 @@ class CompareAveragingModelDeaths:
 
         return draw_df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
 
-    def _summarize(self, agg_location: Optional[str], df: pd.DataFrame) -> (pd.DataFrame, pd.DataFrame):
+    def _summarize(self, agg_location: Optional[str], df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         df['date'] = pd.to_datetime(df['date'])
         if agg_location is not None:
             agg_old_df = df.groupby('date', as_index=False)[self.draws].sum()
@@ -58,8 +58,9 @@ class CompareAveragingModelDeaths:
         df = df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
         return df, daily_df
 
-    def _summarize_draws(self, agg_location: Optional[str]) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame,
-                                                                pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame):
+    def _summarize_draws(self, agg_location: Optional[str]) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
+                                                                     pd.DataFrame, pd.DataFrame, pd.DataFrame,
+                                                                     pd.DataFrame, pd.DataFrame]:
         old_df = self.old_df.copy()
         old_df, old_daily_df = self._summarize(agg_location, old_df)
 
@@ -75,7 +76,7 @@ class CompareAveragingModelDeaths:
         return (old_df, old_daily_df, new_df, new_daily_df,
                 yesterday_df, yesterday_daily_df, before_yesterday_df, before_yesterday_daily_df)
 
-    def make_some_pictures(self, pdf_out_path: str, agg_location: str = None):
+    def make_some_pictures(self, pdf_out_path: str, agg_location: str = None) -> None:
         old_df, old_daily_df, new_df, new_daily_df, \
             yesterday_df, yesterday_daily_df, before_yesterday_df, before_yesterday_daily_df \
              = self._summarize_draws(agg_location)
