@@ -18,6 +18,8 @@ if __name__ == "__main__":
         'seaborn',
         'numpy',
         'pandas',
+        'curvefit',  # Fixme: Must be installed from git repo.
+        'dill',
     ]
 
     test_requirements = [
