@@ -1,28 +1,38 @@
 import os
-
-import numpy as np
-import pandas as pd
+from typing import List, Optional
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import numpy as np
+import pandas as pd
 
+
+
+# TODO: Document better.  These are about the mix of social distancing
+#  covariates.
 COV_SETTINGS = [('equal', [1, 1, 1]),
                 ('ascmid', [0.5, 1, 2]),
-                ('ascmax', [0, 0, 1])]  # ('descmid', [2, 1, 0.5]), ('descmax', [1, 0, 0]),               
-KS = [21]  # 14, 
+                ('ascmax', [0, 0, 1])]  # ('descmid', [2, 1, 0.5]), ('descmax', [1, 0, 0]),
+# TODO: Don't know what this is at all.
+KS = [21]  # 14,
+# TODO: use drmaa and a job template.
 QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -l m_mem_free=3G -l fthread=3 -o omp_num_threads=3 '\
     '{code_dir}/{env}_env.sh {code_dir}/model.py '\
     '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
     '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --n_draws {n_draws}'
+# FIXME: Defined in multiple places.
 RATE_THRESHOLD = -15
 
 
-def submit_curvefit(job_name, location_id, code_dir, env, model_location, model_location_id, data_file, cov_file, peaked_file, output_dir, n_draws):
+def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, model_location: str,
+                    model_location_id: int, data_file: str, cov_file: str, peaked_file: str, output_dir: str,
+                    n_draws: int):
     qsub_str = QSUB_STR.format(
         job_name=job_name,
         location_id=location_id,
         code_dir=code_dir,
         env=env,
+        # FIXME: Abstract string formatting somewhere else.
         model_location=model_location.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
         model_location_id=model_location_id,
         data_file=data_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
@@ -31,21 +41,22 @@ def submit_curvefit(job_name, location_id, code_dir, env, model_location, model_
         output_dir=output_dir.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
         n_draws=n_draws
     )
-    
+
     job_str = os.popen(qsub_str).read()
     print(job_str)
 
 
+# FIXME: I think a lot of this is shared with stuff in compare_moving_average.py.
 class CompareModelDeaths:
-    def __init__(self, old_draw_path, new_draw_path, draws=[f'draw_{i}' for i in range(1000)]):
+    def __init__(self, old_draw_path: str, new_draw_path: str, draws: List[str] = [f'draw_{i}' for i in range(1000)]):
         self.old_df = pd.read_csv(old_draw_path)
         self.new_df = pd.read_csv(new_draw_path)
         self.draws = draws
 
     @staticmethod
-    def _get_deaths_per_day(draw_df, draws):
+    def _get_deaths_per_day(draw_df: pd.DataFrame, draws: List[str]) -> pd.DataFrame:
         draw_df = draw_df.sort_values(['location', 'date']).reset_index(drop=True).copy()
-        delta = draw_df[draws].values[1:,:] - draw_df[draws].values[:-1,:]
+        delta = draw_df[draws].values[1:, :] - draw_df[draws].values[:-1, :]
         draw_df.iloc[1:][draws] = delta
         draw_df['day0'] = draw_df.groupby('location', as_index=False)['date'].transform('min')
         draw_df = draw_df.loc[draw_df['date'] != draw_df['day0']]
@@ -55,7 +66,7 @@ class CompareModelDeaths:
 
         return draw_df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
 
-    def _summarize_draws(self, agg_location):
+    def _summarize_draws(self, agg_location: Optional[str]) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame):
         # old data
         old_df = self.old_df.copy()
         old_df['date'] = pd.to_datetime(old_df['date'])
@@ -73,7 +84,7 @@ class CompareModelDeaths:
 
         # new data
         new_df = self.new_df.copy()
-        new_df['date'] =  pd.to_datetime(new_df['date'])
+        new_df['date'] = pd.to_datetime(new_df['date'])
         if agg_location is not None:
             agg_new_df = new_df.groupby('date', as_index=False)[self.draws].sum()
             agg_new_df['location'] = agg_location
@@ -100,7 +111,7 @@ class CompareModelDeaths:
 
         return old_df, old_daily_df, new_df, new_daily_df
 
-    def make_some_pictures(self, pdf_out_path, agg_location=None):
+    def make_some_pictures(self, pdf_out_path: str, agg_location: str = None):
         old_df, old_daily_df, new_df, new_daily_df = self._summarize_draws(agg_location)
         with PdfPages(pdf_out_path) as pdf:
             for location in new_df['location'].unique():
@@ -108,7 +119,7 @@ class CompareModelDeaths:
                 # cumulative
                 ax[0].fill_between(
                     old_df.loc[old_df['location'] == location, 'date'],
-                    old_df.loc[old_df['location'] == location, 'val_lower'], 
+                    old_df.loc[old_df['location'] == location, 'val_lower'],
                     old_df.loc[old_df['location'] == location, 'val_upper'],
                     alpha=0.25, color='dodgerblue'
                 )
@@ -119,7 +130,7 @@ class CompareModelDeaths:
                 )
                 ax[0].fill_between(
                     new_df.loc[new_df['location'] == location, 'date'],
-                    new_df.loc[new_df['location'] == location, 'val_lower'], 
+                    new_df.loc[new_df['location'] == location, 'val_lower'],
                     new_df.loc[new_df['location'] == location, 'val_upper'],
                     alpha=0.25, color='firebrick'
                 )
@@ -132,7 +143,7 @@ class CompareModelDeaths:
                 ax[0].set_ylabel('Cumulative deaths')
                 # plt.fill_between(
                 #     alt_df.loc[alt_df['location'] == location, 'date'],
-                #     alt_df.loc[alt_df['location'] == location, 'val_lower'], 
+                #     alt_df.loc[alt_df['location'] == location, 'val_lower'],
                 #     alt_df.loc[alt_df['location'] == location, 'val_upper'],
                 #     alpha=0.25, color='forestgreen'
                 # )
@@ -145,7 +156,7 @@ class CompareModelDeaths:
                 # daily
                 ax[1].fill_between(
                     old_daily_df.loc[old_daily_df['location'] == location, 'date'],
-                    old_daily_df.loc[old_daily_df['location'] == location, 'val_lower'], 
+                    old_daily_df.loc[old_daily_df['location'] == location, 'val_lower'],
                     old_daily_df.loc[old_daily_df['location'] == location, 'val_upper'],
                     alpha=0.25, color='dodgerblue'
                 )
@@ -157,7 +168,7 @@ class CompareModelDeaths:
 
                 ax[1].fill_between(
                     new_daily_df.loc[new_daily_df['location'] == location, 'date'],
-                    new_daily_df.loc[new_daily_df['location'] == location, 'val_lower'], 
+                    new_daily_df.loc[new_daily_df['location'] == location, 'val_lower'],
                     new_daily_df.loc[new_daily_df['location'] == location, 'val_upper'],
                     alpha=0.25, color='firebrick'
                 )
