@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -48,6 +48,7 @@ def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, mo
 
 # FIXME: I think a lot of this is shared with stuff in compare_moving_average.py.
 class CompareModelDeaths:
+    # FIXME: mutable default arg.
     def __init__(self, old_draw_path: str, new_draw_path: str, draws: List[str] = [f'draw_{i}' for i in range(1000)]):
         self.old_df = pd.read_csv(old_draw_path)
         self.new_df = pd.read_csv(new_draw_path)
@@ -66,7 +67,8 @@ class CompareModelDeaths:
 
         return draw_df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
 
-    def _summarize_draws(self, agg_location: Optional[str]) -> (pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame):
+    def _summarize_draws(self, agg_location: Optional[str]) -> Tuple[pd.DataFrame, pd.DataFrame,
+                                                                     pd.DataFrame, pd.DataFrame]:
         # old data
         old_df = self.old_df.copy()
         old_df['date'] = pd.to_datetime(old_df['date'])
@@ -97,21 +99,9 @@ class CompareModelDeaths:
         new_daily_df = self._get_deaths_per_day(new_df, self.draws)
         new_df = new_df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
 
-        # # new model/old data
-        # alt_df = pd.read_csv('/ihme/code/rmbarber/covid_19_ihme/model_data/state_data_2020_03_28_AHHHH.csv')
-        # alt_df['date'] =  pd.to_datetime(alt_df['date'])
-        # us_alt_df = alt_df.groupby('date', as_index=False)[draws].sum()
-        # us_alt_df['location'] = 'United States of America'
-        # us_alt_df['observed'] = False
-        # alt_df = us_alt_df[alt_df.columns].append(alt_df).reset_index(drop=True)
-        # alt_df['val_mean'] = alt_df[draws].mean(axis=1)
-        # alt_df['val_lower'] = np.percentile(alt_df[draws], 2.5, axis=1)
-        # alt_df['val_upper'] = np.percentile(alt_df[draws], 97.5, axis=1)
-        # alt_df = alt_df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
-
         return old_df, old_daily_df, new_df, new_daily_df
 
-    def make_some_pictures(self, pdf_out_path: str, agg_location: str = None):
+    def make_some_pictures(self, pdf_out_path: str, agg_location: str = None) -> None:
         old_df, old_daily_df, new_df, new_daily_df = self._summarize_draws(agg_location)
         with PdfPages(pdf_out_path) as pdf:
             for location in new_df['location'].unique():
