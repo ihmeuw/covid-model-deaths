@@ -14,6 +14,10 @@ if __name__ == "__main__":
         long_description = f.read()
 
     install_requirements = [
+        'matplotlib',
+        'seaborn',
+        'numpy',
+        'pandas',
     ]
 
     test_requirements = [
