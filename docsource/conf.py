@@ -115,6 +115,12 @@ html_theme = 'sphinx_rtd_theme'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
+# since we have a lot of tables in the documentation, lets make them wider
+# by default and with wrapped text
+
+def setup(app):
+    app.add_stylesheet('wider_theme.css')
+
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
 #
