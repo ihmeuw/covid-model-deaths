@@ -85,7 +85,7 @@ class SocialDistCov:
 
         return df
 
-    def _calc_composite(self, weights: Union[List[float], np.ndarray]) -> pd.DataFrame:
+    def _calc_composite(self, weights: Union[List[int], List[float], np.ndarray]) -> pd.DataFrame:
         # scale weights
         if isinstance(weights, list):
             weights = np.array(weights)
@@ -150,7 +150,8 @@ class SocialDistCov:
                   + closure_vars
                   + ['composite_1w', 'composite_2w', 'composite_3w']]
 
-    def get_cov_df(self, weights: List[str] = [1, 1, 1], k: int = 20):
+    # FIXME: mutable default
+    def get_cov_df(self, weights: Union[List[int], List[float], np.ndarray] = [1, 1, 1], k: int = 20):
         # get composites
         df = self._calc_composite(weights)
 
