@@ -23,6 +23,9 @@ if __name__ == "__main__":
 
     doc_requirements = [
         'sphinx',
+        'sphinx-click',
+        'sphinx-autodoc-typehints',
+        'sphinx-rtd-theme'
     ]
 
     setup(
