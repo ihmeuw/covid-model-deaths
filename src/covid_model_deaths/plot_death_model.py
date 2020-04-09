@@ -47,7 +47,6 @@ def plot_death_model(draw_df: pd.DataFrame, location_id: int, loc_table: pd.Data
         plt.title(location)
     else:
         plt.title(location + ' - ' + country)
-        f_name = country + '_' + location
     if show:
         plt.show()
     return f
@@ -106,6 +105,7 @@ def plot_aggregate(draw_df: pd.DataFrame):
     plt.xticks(rotation=60)
 
 
+# FIXME: Unused show variable, don't change apis till we know the calls.
 def save_plots(in_path: str, out_dir: str, loc_table: pd.DataFrame, show: bool = True, agg: bool = True):
     # TODO: Don't do I/O here.
     draw_df = pd.read_csv(in_path)
