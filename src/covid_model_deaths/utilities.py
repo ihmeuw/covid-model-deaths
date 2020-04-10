@@ -46,6 +46,48 @@ def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, mo
     print(job_str)
 
 
+def get_peak_date(past_draw_df, avg_df):
+    draw_cols = [f'draw_{i}' for i in range(1000)]
+    df_len = len(avg_df)
+
+    # combine past and future model data
+    future_draw_df = avg_df.loc[avg_df['observed'] == False].copy()
+    future_draw_df['date'] = pd.to_datetime(future_draw_df['date'])
+    if 'draw_999' not in past_draw_df.columns:
+        past_draw_df['draw_999'] = past_draw_df['draw_998']
+    if 'draw_999' not in future_draw_df.columns:
+        future_draw_df['draw_999'] = future_draw_df['draw_998']
+    peak_df = past_draw_df.append(future_draw_df[past_draw_df.columns])
+    peak_df = peak_df.sort_values(['location_id', 'date']).reset_index(drop=True)
+    n_locs = peak_df['location_id'].unique().size
+
+    # get daily deaths
+    daily = peak_df[draw_cols].values[1:] - peak_df[draw_cols].values[:-1]
+    peak_df['start_date'] = peak_df.groupby('location_id', as_index=False)['date'].transform(min)
+    peak_df = peak_df[1:]
+    peak_df[draw_cols] = daily
+    peak_df = peak_df.loc[peak_df['date'] != peak_df['start_date']]
+
+    # take mean and find peak (taking first day at peak if multiplt)
+    peak_df['mean_daily'] = peak_df[draw_cols].mean(axis=1)
+    peak_df['peak'] = peak_df.groupby('location_id', as_index=False)['mean_daily'].transform(max)
+    peak_df = peak_df.loc[peak_df['mean_daily'] == peak_df['peak']]
+    if len(peak_df) < n_locs:
+        raise ValueError('Not all locations in peak data')
+    peak_df = peak_df.groupby('location_id', as_index=False)['date'].min()
+
+    # attach data
+    peak_df['peak_date'] = True
+    df = avg_df.copy()
+    df = peak_df[['location_id', 'date', 'peak_date']].merge(df, how='right')
+    df['peak_date'] = df['peak_date'].fillna(False)
+    if len(df) != df_len:
+        raise ValueError('Have changed data dimensions somehow.')
+    df = df.sort_values(['location_id', 'date']).reset_index(drop=True)
+
+    return df[['location_id', 'location', 'date', 'peak_date', 'observed'] + draw_cols]
+
+
 # FIXME: I think a lot of this is shared with stuff in compare_moving_average.py.
 class CompareModelDeaths:
     # FIXME: mutable default arg.
@@ -77,6 +119,7 @@ class CompareModelDeaths:
             agg_old_df['location'] = agg_location
             agg_old_df['location_id'] = -1
             agg_old_df['observed'] = False
+            agg_old_df['peak_date'] = False
             old_df = agg_old_df[old_df.columns].append(old_df).reset_index(drop=True)
         old_df['val_mean'] = old_df[self.draws].mean(axis=1)
         old_df['val_lower'] = np.percentile(old_df[self.draws], 2.5, axis=1)
@@ -92,6 +135,7 @@ class CompareModelDeaths:
             agg_new_df['location'] = agg_location
             agg_new_df['location_id'] = -1
             agg_new_df['observed'] = False
+            agg_new_df['peak_date'] = False
             new_df = agg_new_df[new_df.columns].append(new_df).reset_index(drop=True)
         new_df['val_mean'] = new_df[self.draws].mean(axis=1)
         new_df['val_lower'] = np.percentile(new_df[self.draws], 2.5, axis=1)
