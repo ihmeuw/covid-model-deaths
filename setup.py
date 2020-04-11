@@ -19,7 +19,6 @@ if __name__ == "__main__":
         'ipdb',
         'dill',
         'pandas',
-        'tables',
         'xlrd',
         'pyarrow',
         'openpyxl',
@@ -28,6 +27,7 @@ if __name__ == "__main__":
         'matplotlib',
         'seaborn',
         'db_queries'
+        'curvefit @ git+https://github.com/ihmeuw-msca/CurveFit@product#egg=curvefit'
     ]
 
     test_requirements = [
