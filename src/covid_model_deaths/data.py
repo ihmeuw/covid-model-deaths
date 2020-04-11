@@ -1,14 +1,19 @@
-from datetime import timedelta
 from typing import NamedTuple
+
+from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import numpy as np
-import pandas as pd
-
 import seaborn as sns
 
 sns.set_style('whitegrid')
+
+import numpy as np
+import pandas as pd
+
+
+# pd.options.display.max_columns = 9999
+# pd.options.display.max_rows = 9999
 
 
 class _Measures(NamedTuple):
@@ -194,6 +199,22 @@ class DeathModelData:
         df = df.copy()
         df = df.sort_values(['location_id', 'Country/Region', 'Location', 'Date']).reset_index(drop=True)
 
+        # get delta, drop last day if it does not contain new deaths (assume lag)
+        diff = df['ln(age-standardized death rate)'].values[1:] - df['ln(age-standardized death rate)'].values[:-1]
+        df['Delta ln(asdr)'] = np.nan
+        df['Delta ln(asdr)'][1:] = diff
+        df['first_point'] = df.groupby(['location_id', 'Country/Region', 'Location'], as_index=False).Days.transform(
+            'min')
+        df.loc[df['Days'] == df['first_point'], 'Delta ln(asdr)'] = np.nan
+        df['last_point'] = df.groupby(['location_id', 'Country/Region', 'Location'], as_index=False).Days.transform(
+            'max')
+        df = df.loc[~((df['Days'] == df['last_point']) & (df['Delta ln(asdr)'] == 0))]
+
+        # clean up (will add delta back after expanding)
+        del df['first_point']
+        del df['last_point']
+        del df['Delta ln(asdr)']
+
         # fill in missing days and smooth
         loc_df_list = [df.loc[df['location_id'] == l] for l in df['location_id'].unique()]
         df = pd.concat([self._moving_average_lnasdr(loc_df) for loc_df in loc_df_list]).reset_index(drop=True)
@@ -231,12 +252,6 @@ class DeathModelData:
         df.loc[df['Days'] == df['first_point'], 'Delta ln(asdr)'] = np.nan
         df.loc[df['Days'] == df['first_point'], 'Observed delta ln(asdr)'] = np.nan
 
-        # drop if last delta is 0
-        df['last_point'] = (df
-                            .groupby(['location_id', 'Country/Region', 'Location'], as_index=False)
-                            .Days.transform('max'))
-        df = df.loc[~((df['Days'] == df['last_point']) & (df['Observed delta ln(asdr)'] == 0))]
-
         # project backwards using lagged ln(asdr)
         delta_df = df.copy()
         delta_df = delta_df.loc[(delta_df['Days'] > 0) & (delta_df['Days'] <= 5)]
@@ -262,7 +277,6 @@ class DeathModelData:
         df['first_point'] = df.groupby(['Country/Region', 'Location'], as_index=False).Days.transform('min')
         df.loc[df['first_point'] < 0, 'Days'] = df['Days'] - df['first_point']
         del df['first_point']
-        del df['last_point']
 
         return df
 
@@ -285,7 +299,8 @@ class DeathModelData:
             # day) no longer add date, since we have partial days
             if df['Days'].min() != 0:
                 raise ValueError(f'First day is not 0, as expected... (location_id: {location_id})')
-            bc_df['Days'] = -bc_df.index - (start_rep - bc_rates[-1]) / bc_step
+            bc_df['Days'] = -(bc_df.index) - (start_rep - bc_rates[-1]) / bc_step
+            # bc_df['Date'] = [df['Date'].min() - timedelta(days=x+1) for x in range(len(bc_df))]
 
             # don't project more than 10 days back, or we will have PROBLEMS
             bc_df = (bc_df
