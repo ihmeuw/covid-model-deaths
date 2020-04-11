@@ -33,7 +33,9 @@ class CompareAveragingModelDeaths:
     @staticmethod
     def _get_deaths_per_day(draw_df: pd.DataFrame, draws: List[str]) -> pd.DataFrame:
         draw_df = draw_df.sort_values(['location', 'date']).reset_index(drop=True).copy()
-        delta = draw_df[draws].values[1:, :] - draw_df[draws].values[:-1,:]
+        if 'peak_date' not in draw_df.columns:
+            draw_df['peak_date'] = False
+        delta = draw_df[draws].values[1:,:] - draw_df[draws].values[:-1,:]
         draw_df.iloc[1:][draws] = delta
         draw_df['day0'] = draw_df.groupby('location', as_index=False)['date'].transform('min')
         draw_df = draw_df.loc[draw_df['date'] != draw_df['day0']]
@@ -41,21 +43,24 @@ class CompareAveragingModelDeaths:
         draw_df['val_lower'] = np.percentile(draw_df[draws], 2.5, axis=1)
         draw_df['val_upper'] = np.percentile(draw_df[draws], 97.5, axis=1)
 
-        return draw_df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
+        return draw_df[['location', 'date', 'peak_date', 'observed', 'val_mean', 'val_lower', 'val_upper']]
 
     def _summarize(self, agg_location: Optional[str], df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         df['date'] = pd.to_datetime(df['date'])
+        if 'peak_date' not in df.columns:
+            df['peak_date'] = False
         if agg_location is not None:
             agg_old_df = df.groupby('date', as_index=False)[self.draws].sum()
             agg_old_df['location'] = agg_location
             agg_old_df['location_id'] = -1
+            agg_old_df['peak_date'] = False
             agg_old_df['observed'] = False
             df = agg_old_df[df.columns].append(df).reset_index(drop=True)
         df['val_mean'] = df[self.draws].mean(axis=1)
         df['val_lower'] = np.percentile(df[self.draws], 2.5, axis=1)
         df['val_upper'] = np.percentile(df[self.draws], 97.5, axis=1)
         daily_df = self._get_deaths_per_day(df, self.draws)
-        df = df[['location', 'date', 'val_mean', 'val_lower', 'val_upper']]
+        df = df[['location', 'date', 'peak_date', 'observed', 'val_mean', 'val_lower', 'val_upper']]
         return df, daily_df
 
     def _summarize_draws(self, agg_location: Optional[str]) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
@@ -83,6 +88,12 @@ class CompareAveragingModelDeaths:
         with PdfPages(pdf_out_path) as pdf:
             for location in new_df['location'].unique():
                 fig, ax = plt.subplots(1, 2, figsize=(16.5, 8.5))
+                # get peak date
+                if any(new_df.loc[new_df['location'] == location, 'peak_date']):
+                    peak_date = new_df.loc[(new_df['location'] == location) & (new_df['peak_date']), 'date'].item()
+                else:
+                    peak_date = None
+
                 # cumulative
                 ax[0].fill_between(
                     old_df.loc[old_df['location'] == location, 'date'],
@@ -182,6 +193,10 @@ class CompareAveragingModelDeaths:
                     before_yesterday_daily_df.loc[before_yesterday_daily_df['location'] == location, 'val_mean'],
                     color='khaki', label='Before Last Run'
                 )
+
+                if peak_date is not None:
+                    ax[0].axvline(peak_date, color='black', linestyle='--', alpha=0.75)
+                    ax[1].axvline(peak_date, color='black', linestyle='--', alpha=0.75)
 
                 ax[1].set_xlabel('Date')
                 ax[1].set_ylabel('Daily deaths')

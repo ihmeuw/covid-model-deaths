@@ -26,14 +26,14 @@ def get_filepath(indir, date_dir, location):
     elif location == 'Europe':
         filepath = os.path.join(indir, date_dir, "euro_data.csv")
     else:
-        raise(f"{location} does not exist!")
+        raise (f"{location} does not exist!")
     return filepath
 
 
 def get_previous_filepaths(indir: str, location: str, n_models=3):
     '''`location` should be `US` or `Europe` for now.'''
     if location not in ['US', 'Europe']:
-        raise(f"{location} is not US or Europe")
+        raise (f"{location} is not US or Europe")
 
     lst_paths = []
     for n_diff in range(0, 100):
@@ -61,13 +61,13 @@ def get_daily_deaths(df):
     df = df.sort_values(COLUMNS)
     tmp_cols = df[['date', 'observed']]
     df = (df.groupby(['location_id', 'location'])[DRAWS]
-             .apply(lambda x: x.shift(0) - x.shift(1).fillna(0)))
+          .apply(lambda x: x.shift(0) - x.shift(1).fillna(0)))
     # Add back `date` and `observed` columns
     df = df.reset_index(['location_id', 'location']).join(tmp_cols)[COLUMNS + DRAWS]
     return df
 
 
-def average_model_outputs(lst_paths, indir, location):
+def average_model_outputs(lst_paths, model_1, indir, location):
     '''Average over model outputs'''
     lst_df_prev = []
     for inpath in lst_paths:
@@ -80,8 +80,8 @@ def average_model_outputs(lst_paths, indir, location):
         df_prev = get_daily_deaths(df_prev)
         lst_df_prev.append(df_prev)
     mean_df = (pd.concat(lst_df_prev)
-                 .groupby(COLUMNS)
-                 .mean().reset_index())
+               .groupby(COLUMNS)
+               .mean().reset_index())
 
     ## To refactor
     # mean_df['Date'] = (mean_df['date']
@@ -93,13 +93,14 @@ def average_model_outputs(lst_paths, indir, location):
     #                       & (mean_df.Date <= datetime.today() - timedelta(1)))]
     # mean_df = mean_df.drop('Date', axis=1)
 
-    df = get_today_data(indir, location)
+    # df = get_today_data(indir, location)
+    df = pd.read_csv(model_1)
     mean_df = mean_df.merge(df[COLUMNS])
     tmp_cols = mean_df[COLUMNS]
 
     # Get the cumulative deaths from daily deaths.
     mean_df = (mean_df.groupby(['location_id', 'location'])[DRAWS]
-                      .cumsum().join(tmp_cols)[COLUMNS + DRAWS])
+        .cumsum().join(tmp_cols)[COLUMNS + DRAWS])
     return mean_df
 
 
@@ -114,7 +115,7 @@ def get_today_data(indir, location):
     return df
 
 
-def append_observed_outputs(indir, mean_df, location):
+def append_observed_outputs(model_1, mean_df, location):
     # today_date = datetime.today().strftime("%Y_%m_%d").replace('-', '_')
     # today_dir = f"{today_date}_{location}"
     # # Specify `today_dir` for test purpose.
@@ -122,28 +123,30 @@ def append_observed_outputs(indir, mean_df, location):
     # # today_dir = "2020_04_06_Europe"
     # today_filepath = get_filepath(indir, today_dir, location)
     # df = pd.read_csv(today_filepath)
-    df = get_today_data(indir, location)
+
+    # df = get_today_data(indir, location)
+    df = pd.read_csv(model_1)
     orig_len = len(df)
     mean_df = mean_df.merge(df[COLUMNS])
 
-    df = df.loc[df.observed == True].append(mean_df.loc[mean_df.observed==False])
+    df = df.loc[df.observed == True].append(mean_df.loc[mean_df.observed == False])
     df = (df.sort_values(COLUMNS)
-            .drop_duplicates(COLUMNS))
+          .drop_duplicates(COLUMNS))
     if orig_len != len(df):
         raise ValueError('Original data and averaged data are not same length.')
     return df
 
 
 def moving_average_predictions(location, indir="/ihme/covid-19/deaths/prod",
-    specified=False, model_1=None, model_2=None, model_3=None):
+                               specified=False, model_1=None, model_2=None, model_3=None):
     '''Average the predictions for recent 3 runs.'''
     if not specified:
         lst_paths = get_previous_filepaths(indir, location)
     else:
         lst_paths = [model_1, model_2, model_3]
     print("Averaging over the following files: ", lst_paths)
-    mean_df = average_model_outputs(lst_paths, indir, location)
-    full_df = append_observed_outputs(indir, mean_df, location)
+    mean_df = average_model_outputs(lst_paths, model_1, indir, location)
+    full_df = append_observed_outputs(model_1, mean_df, location)
     return full_df
 
 
@@ -160,9 +163,9 @@ def plot_moving_average(location, indir="/ihme/covid-19/deaths/prod"):
             average_draw_path=average_draw_path,
             yesterday_draw_path=yesterday_draw_path,
             before_yesterday_draw_path=before_yesterday_draw_path
-            )
+        )
         plotter.make_some_pictures(f'/ihme/covid-19/deaths/prod/2020_04_06_Europe_test/moving_average_compare.pdf',
-                                    'Europe')
+                                   'Europe')
     elif location == 'US':
         raw_draw_path = '/ihme/covid-19/deaths/prod/2020_04_06_US/state_data.csv'
         average_draw_path = '/ihme/covid-19/deaths/prod/2020_04_06_US_test/past_avg_state_data.csv'
@@ -174,9 +177,9 @@ def plot_moving_average(location, indir="/ihme/covid-19/deaths/prod"):
             average_draw_path=average_draw_path,
             yesterday_draw_path=yesterday_draw_path,
             before_yesterday_draw_path=before_yesterday_draw_path
-            )
+        )
         plotter.make_some_pictures(f'/ihme/covid-19/deaths/prod/2020_04_06_US/moving_average_compare.pdf',
-                                    'United States of America')
+                                   'United States of America')
 
 
 if __name__ == '__main__':
@@ -188,9 +191,9 @@ if __name__ == '__main__':
     # df_europe.to_csv('/ihme/covid-19/deaths/prod/2020_04_06_Europe_test/past_avg_state_data.csv', index=False)
 
     df_us = moving_average_predictions('US',
-        model_1='/ihme/covid-19/deaths/prod/2020_04_06_US/state_data.csv',
-        model_2='/ihme/covid-19/deaths/prod/2020_04_05_US/state_data.csv',
-        model_3='/ihme/covid-19/deaths/prod/2020_04_04_US/state_data.csv')
+                                       model_1='/ihme/covid-19/deaths/prod/2020_04_06_US/state_data.csv',
+                                       model_2='/ihme/covid-19/deaths/prod/2020_04_05_US/state_data.csv',
+                                       model_3='/ihme/covid-19/deaths/prod/2020_04_04_US/state_data.csv')
     df_us.to_csv('/ihme/covid-19/deaths/prod/2020_04_06_US_test/past_avg_state_data.csv', index=False)
 
     plot_moving_average('US')

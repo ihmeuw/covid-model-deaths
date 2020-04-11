@@ -14,12 +14,20 @@ if __name__ == "__main__":
         long_description = f.read()
 
     install_requirements = [
+        'jupyter',
+        'jupyterlab',
+        'ipdb',
+        'dill',
+        'pandas',
+        'tables',
+        'xlrd',
+        'pyarrow',
+        'openpyxl',
+        'numpy',
+        'scipy',
         'matplotlib',
         'seaborn',
-        'numpy',
-        'pandas',
-        'curvefit',  # Fixme: Must be installed from git repo.
-        'dill',
+        'db_queries'
     ]
 
     test_requirements = [
