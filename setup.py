@@ -26,7 +26,7 @@ if __name__ == "__main__":
         'scipy',
         'matplotlib',
         'seaborn',
-        'db_queries'
+        'db_queries',
         'curvefit @ git+https://github.com/ihmeuw-msca/CurveFit@product#egg=curvefit'
     ]
 
