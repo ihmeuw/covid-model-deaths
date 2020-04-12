@@ -36,8 +36,11 @@ and launch the notebooks for the model you're running.
 After analysis is complete, run 
 
 ```
-(covid-deaths-YYYY-MM-DD_HH-MM-SS) > ./cleanup.sh
+(covid-deaths-YYYY-MM-DD_HH-MM-SS) > ./cleanup.sh RUN_TYPE
 ```
 
 which will strip notebook outputs for easier versioning, and then commit any
-new changes to a production branch with a tag for the run.
+new changes to a production branch with a tag for the run. `RUN_TYPE` must 
+be one of `prod`, `dev`, or `eng`.  The first two are used for production 
+and development runs, respectively, while the latter is for engineering 
+updates.
