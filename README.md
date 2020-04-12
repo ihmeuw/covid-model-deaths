@@ -7,8 +7,8 @@ A packaged version of the covid-19 deaths model.
 
 ### Setup.
 
-To get setup to run the deaths model, do the following, 
-get on the cluster in a qlogin and do the following:
+To get setup to run the deaths model get on the cluster in a qlogin and do 
+the following:
 
 ```
 > git clone https://stash.ihme.washington.edu/scm/cvd19/covid-model-deaths.git
