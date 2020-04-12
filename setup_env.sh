@@ -1,7 +1,7 @@
 #!/bin/bash
-export PATH="/ihme/covid-19/miniconda3/bin:$PATH"
+eval "$(/ihme/covid-19/miniconda/bin/conda shell.bash hook)"
 dt=`date '+%Y-%m-%d_%H-%M-%S'`
 echo "Creating environment covid-deaths-$dt"
 conda create -y --name=covid-deaths-$dt python=3.6
-source /ihme/covid-19/miniconda3/bin/activate covid-deaths-$dt
-#which pip
+conda activate covid-deaths-$dt
+pip install --extra-index-url https://artifactory.ihme.washington.edu/artifactory/api/pypi/pypi-shared/simple/ -e .
