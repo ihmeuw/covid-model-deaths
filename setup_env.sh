@@ -1,4 +1,3 @@
-#!/bin/bash
 eval "$(/ihme/covid-19/miniconda/bin/conda shell.bash hook)"
 dt=`date '+%Y-%m-%d_%H-%M-%S'`
 echo "Creating environment covid-deaths-$dt"

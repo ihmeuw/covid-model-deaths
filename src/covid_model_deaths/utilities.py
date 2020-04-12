@@ -16,33 +16,31 @@ COV_SETTINGS = [('equal', [1, 1, 1]),
 # TODO: Don't know what this is at all.
 KS = [21]  # 14,
 # TODO: use drmaa and a job template.
-QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -l m_mem_free=3G -l fthread=3 -o omp_num_threads=3 '\
-    '-e /share/temp/sgeoutput/covid_deaths ' \ 
-    '{code_dir}/{env}_env.sh {code_dir}/model.py '\
-    '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
-    '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --n_draws {n_draws}'
+QSUB_STR = ('qsub -N {job_name} -P proj_dq -q d.q -b y -l m_mem_free=3G -l fthread=3 -o omp_num_threads=3 '
+            '-e /share/temp/sgeoutput/covid_deaths '
+            '{python} {model_script} '
+            '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '
+            '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --n_draws {n_draws}')
 # FIXME: Defined in multiple places.
 RATE_THRESHOLD = -15
 
 
-def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, model_location: str,
+def submit_curvefit(job_name: str, location_id: int, model_script: str, python: str, model_location: str,
                     model_location_id: int, data_file: str, cov_file: str, peaked_file: str, output_dir: str,
                     n_draws: int):
     qsub_str = QSUB_STR.format(
         job_name=job_name,
         location_id=location_id,
-        code_dir=code_dir,
-        env=env,
-        # FIXME: Abstract string formatting somewhere else.
-        model_location=model_location.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
+        python=python,
+        model_script=model_script,
+        model_location=model_location,
         model_location_id=model_location_id,
-        data_file=data_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
-        cov_file=cov_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
-        peaked_file=peaked_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
-        output_dir=output_dir.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
+        data_file=data_file,
+        cov_file=cov_file,
+        peaked_file=peaked_file,
+        output_dir=output_dir,
         n_draws=n_draws
     )
-
     job_str = os.popen(qsub_str).read()
     print(job_str)
 

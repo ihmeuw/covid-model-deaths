@@ -42,7 +42,10 @@ class SocialDistCov:
     def _process_closure_dataset(self) -> pd.DataFrame:
         # load data, keep relevant rows/columns
         df = pd.read_excel(self.closure_sheet)
-
+        
+        # FIXME: there have been issues in the past with merge_name and 
+        #  country not being the same, such that the threshold merge fails. 
+        #  recognize this function's reliance on merge_name if debugging.
         # fix names
         df = df.rename(index=str, columns={'merge_name': 'Location', 'country': 'Country/Region'})
         df = df.loc[(df['notes and additional information'] != 'NOT') &
