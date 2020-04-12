@@ -33,4 +33,11 @@ currently sitting in, which should be the `covid-model-deaths`
 directory.  You can then navigate to `notebooks` sub-directory
 and launch the notebooks for the model you're running.
 
-TODO: Cleanup instructions/script
+After analysis is complete, run 
+
+```
+(covid-deaths-YYYY-MM-DD_HH-MM-SS) > ./cleanup.sh
+```
+
+which will strip notebook outputs for easier versioning, and then commit any
+new changes to a production branch with a tag for the run.
