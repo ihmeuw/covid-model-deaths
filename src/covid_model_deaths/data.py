@@ -50,7 +50,7 @@ def get_input_data(measure: str, data_version: str = 'best') -> pd.DataFrame:
     if measure not in MEASURES:
         raise ValueError(f'Invalid measure {measure} - valid measures are {", ".join(MEASURES)}')
 
-    df = pd.read_csv(f'/ihme/covid-19/model-inputs/{data_version}/{measure}.csv')
+    df = pd.read_csv(f'/ihme/covid-19/model-inputs/production_r/{measure}.csv')
 
     if 'date' in df.columns:
         df['date'] = pd.to_datetime(df['date'])

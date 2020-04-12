@@ -114,7 +114,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
 
     # for prediction of places with no data
     alpha_times_beta = np.exp(0.7)
-    obs_bounds = [25, np.inf] # filter the data rich models
+    obs_bounds = [30, np.inf] # filter the data rich models
     predict_cov = np.array([1.0, location_cov, 1.0]) # new covariates for the places.
     
     # tight prior control panel
