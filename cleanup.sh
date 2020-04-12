@@ -1,7 +1,7 @@
 #!/bin/bash
 # Tell users about usage
-if [ "$#" -ne 1 ] || [ "$1" != "prod" ] && [ "$1" != "dev" ] && [ "$1" != 'eng']; then
-   echo "Usage: $0 prod|dev|eng"
+if [ "$#" -ne 1 ] || [ "$1" != "prod" ] && [ "$1" != "dev" ]; then
+   echo "Usage: $0 prod|dev"
    exit 1
 fi
 

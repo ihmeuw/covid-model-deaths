@@ -41,6 +41,4 @@ After analysis is complete, run
 
 which will strip notebook outputs for easier versioning, and then commit any
 new changes to a production branch with a tag for the run. `RUN_TYPE` must 
-be one of `prod`, `dev`, or `eng`.  The first two are used for production 
-and development runs, respectively, while the latter is for engineering 
-updates.
+be one of `prod`, or `dev` for production and development runs, respectively.
