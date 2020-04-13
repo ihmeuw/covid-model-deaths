@@ -337,6 +337,7 @@ def run_death_models():
     )
     """
     parser = argparse.ArgumentParser()
+
     parser.add_argument(
         '--model_location', help='Name of location to which we are standardizing.', type=str
     )
@@ -359,7 +360,7 @@ def run_death_models():
         '--n_draws', help='How many samples to take.', type=int
     )
     args = parser.parse_args()
-
+    print(args)
     # read data
     df = pd.read_csv(args.data_file)
     cov_df = pd.read_csv(args.cov_file)
