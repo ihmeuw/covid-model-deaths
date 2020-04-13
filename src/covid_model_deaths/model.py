@@ -43,10 +43,10 @@ def get_hash(key: str) -> int:
 def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclude_groups, pred_days=150):
     # our dataset
     df = df.copy()
-    
+
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
-    ## SET UP    
+    ## SET UP
     # basic information and model setting
     basic_info_dict = dict(
         all_cov_names=[COVARIATE],
@@ -62,7 +62,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         link_fun=[np.exp, lambda x: x, np.exp],
         var_link_fun=[lambda x: x, lambda x: x, lambda x: x]
     )
-    
+
     # basic fit parameter
     dummy_gprior = [0.0, np.inf]
     dummy_uprior = [-np.inf, np.inf]
@@ -96,7 +96,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
             'disp': False
         }
     )
-    
+
     # draw related paramters
     draw_dict = dict(
         n_draws=n_draws,
@@ -114,9 +114,9 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
 
     # for prediction of places with no data
     alpha_times_beta = np.exp(0.7)
-    obs_bounds = [25, np.inf] # filter the data rich models
+    obs_bounds = [30, np.inf] # filter the data rich models
     predict_cov = np.array([1.0, location_cov, 1.0]) # new covariates for the places.
-    
+
     # tight prior control panel
     tight_info_dict = {
         **deepcopy(basic_info_dict),
@@ -131,20 +131,20 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         **deepcopy(basic_fit_dict),
         'fun_gprior': [lambda params: params[0] * params[1], [np.exp(0.7), 1.0]]
     }
-    
+
     # loose prior control panel
     loose_info_dict = {
         **deepcopy(basic_info_dict),
         'fun': curvefit.log_erf,
         'col_obs': 'ln(age-standardized death rate)',
-        'obs_se_func': lambda x: (1 / (0.1 + x**1.4)), 
+        'obs_se_func': lambda x: (1 / (0.1 + x**1.4)),
         'prior_modifier': lambda x: 0.2
     }
     loose_fit_dict = {
         **deepcopy(basic_fit_dict),
         'fun_gprior': [lambda params: params[0] * params[1], dummy_gprior]
     }
-    
+
     # prepare data
     df = get_derivative_of_column_in_log_space(
         df,
@@ -153,7 +153,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         col_grp=basic_info_dict['col_group']
     )
     df['daily deaths'] = np.exp(df['d ' + tight_info_dict['col_obs']])
-    
+
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
     ## RUN MODEL
@@ -178,7 +178,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         fit_dict=loose_fit_dict
     )
     loose_model.run(**draw_dict)
-    
+
     # get truncated draws
     tight_draws = tight_model.process_draws(draw_dict['prediction_times'])
     loose_draws = loose_model.process_draws(draw_dict['prediction_times'])
@@ -191,26 +191,26 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
                                    start_day=start_day,
                                    end_day=end_day)
         combined_draws.update({
-            group: (tight_draws[group][0], 
+            group: (tight_draws[group][0],
                     np.log(np.exp(tight_model.models[group].obs[-1]) + np.exp(draws).cumsum(axis=1)))
         })
-    
+
     # get overall draws
     filtered_tight_models = tight_model.run_filtered_models(
         df=tight_model.all_data, obs_bounds=obs_bounds
     )
     overall_tight_draws = tight_model.create_overall_draws(
-        draw_dict['prediction_times'], filtered_tight_models, predict_cov, alpha_times_beta=alpha_times_beta, 
+        draw_dict['prediction_times'], filtered_tight_models, predict_cov, alpha_times_beta=alpha_times_beta,
         sample_size=draw_dict['n_draws'], slope_at=10, epsilon=draw_dict['cv_threshold']
     )
     filtered_loose_models = loose_model.run_filtered_models(
         df=loose_model.all_data, obs_bounds=obs_bounds
     )
     overall_loose_draws = loose_model.create_overall_draws(
-        draw_dict['prediction_times'], filtered_loose_models, predict_cov, alpha_times_beta=alpha_times_beta, 
+        draw_dict['prediction_times'], filtered_loose_models, predict_cov, alpha_times_beta=alpha_times_beta,
         sample_size=draw_dict['n_draws'], slope_at=10, epsilon=draw_dict['cv_threshold']
     )
-    
+
     # get specs and truncate overall, then combine
     if model_location in list(combined_draws.keys()):
         last_day = tight_model.models[model_location].t[-1]
@@ -241,10 +241,10 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
                                start_day=start_day,
                                end_day=end_day)
     combined_draws.update({
-        'overall': (overall_time[1:], 
+        'overall': (overall_time[1:],
                     np.log(np.exp(last_obs) + np.exp(draws).cumsum(axis=1)))
     })
-    
+
     return tight_model, loose_model, combined_draws
 
 
@@ -254,10 +254,10 @@ def plot_location(location, location_name, covariate_val, tm, lm, draw, populati
     tight_curve = tm.predict(tight_curve_t, group_name=location)
     loose_curve_t = np.arange(pred_days)
     loose_curve = lm.predict(loose_curve_t, group_name=location)
-    
+
     # set up plot space
     fig, ax = plt.subplots(2, 2, figsize=(16.5, 8.5))
-    
+
     # ln(asdr)
     ax[0, 0].scatter(tm.t, tm.obs, c='dodgerblue', edgecolors='navy')
     ax[0, 0].plot(draw[0], draw[1].mean(axis=0), color='dodgerblue')
@@ -269,7 +269,7 @@ def plot_location(location, location_name, covariate_val, tm, lm, draw, populati
                           color='dodgerblue', alpha=0.25)
     ax[0, 0].set_xlim(tm.t.min() * 0.9, tm.t.max() + 28)
     ax[0, 0].set_ylabel('ln(asdr)')
-    
+
     # asdr
     ax[0, 1].scatter(tm.t, np.exp(tm.obs), c='dodgerblue', edgecolors='navy')
     ax[0, 1].plot(draw[0], np.exp(draw[1]).mean(axis=0), color='dodgerblue')
@@ -282,7 +282,7 @@ def plot_location(location, location_name, covariate_val, tm, lm, draw, populati
     ax[0, 1].set_ylabel('asdr')
     ax[0, 1].set_xlim(0, draw[0].max())
     ax[0, 1].set_ylim(0, np.quantile(np.exp(draw[1]), 0.975, axis=0).max()*1.1)
-    
+
     # deaths
     ax[1, 0].scatter(tm.t, np.exp(tm.obs)*population, c='dodgerblue', edgecolors='navy')
     ax[1, 0].plot(draw[0], np.exp(draw[1]).mean(axis=0)*population, color='dodgerblue')
@@ -296,16 +296,16 @@ def plot_location(location, location_name, covariate_val, tm, lm, draw, populati
     ax[1, 0].set_xlim(0, draw[0].max())
     ax[1, 0].set_ylim(0, np.quantile(np.exp(draw[1])*population, 0.975, axis=0).max()*1.1)
     ax[1, 0].set_xlabel('days')
-    
+
 
     # daily deaths
-    ax[1, 1].scatter(tm.t[1:], np.exp(tm.obs)[1:]*population - np.exp(tm.obs)[:-1]*population, 
+    ax[1, 1].scatter(tm.t[1:], np.exp(tm.obs)[1:]*population - np.exp(tm.obs)[:-1]*population,
                      c='dodgerblue', edgecolors='navy')
-    ax[1, 1].plot(draw[0][1:], (np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population).mean(axis=0), 
+    ax[1, 1].plot(draw[0][1:], (np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population).mean(axis=0),
                   color='dodgerblue')
-    ax[1, 1].plot(tight_curve_t[1:], np.exp(tight_curve)[1:]*population - np.exp(tight_curve)[:-1]*population, 
+    ax[1, 1].plot(tight_curve_t[1:], np.exp(tight_curve)[1:]*population - np.exp(tight_curve)[:-1]*population,
                   color='forestgreen')
-    ax[1, 1].plot(loose_curve_t[1:], np.exp(loose_curve)[1:]*population - np.exp(loose_curve)[:-1]*population, 
+    ax[1, 1].plot(loose_curve_t[1:], np.exp(loose_curve)[1:]*population - np.exp(loose_curve)[:-1]*population,
                   color='firebrick')
     ax[1, 1].fill_between(draw[0][1:],
                           np.quantile(np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population, 0.025, axis=0),
@@ -322,8 +322,8 @@ def plot_location(location, location_name, covariate_val, tm, lm, draw, populati
         pdf.savefig(fig)
     else:
         plt.show()
-    
-    
+
+
 def run_death_models():
     """
     args = argparse.Namespace(
@@ -359,18 +359,18 @@ def run_death_models():
         '--n_draws', help='How many samples to take.', type=int
     )
     args = parser.parse_args()
-    
+
     # read data
     df = pd.read_csv(args.data_file)
     cov_df = pd.read_csv(args.cov_file)
-    
+
     # try setting floor for covariate
     cov_df.loc[cov_df[COVARIATE] < 0.1, COVARIATE] = 0.1
-    
+
     # encode location_id so we don't end up w/ indexing issues
     df['location_id'] = '_' + df['location_id'].astype(str)
-    
-    # attach covs to data file -- should check if scenario run is necessary for location, so 
+
+    # attach covs to data file -- should check if scenario run is necessary for location, so
     # as not to be wasteful...
     df = pd.merge(df, cov_df[['Location', COVARIATE]], how='left')
     if df[COVARIATE].isnull().any():
@@ -378,33 +378,33 @@ def run_death_models():
         #raise ValueError(f'The following locations are missing covariates: {", ".join(missing_locs)}')
         print(f'The following locations are missing covariates: {", ".join(missing_locs)}')
         df = df.loc[~df[COVARIATE].isnull()]
-    df = df.sort_values(['location_id', 'Days']).reset_index(drop=True)  # 'Country/Region', 
-    
+    df = df.sort_values(['location_id', 'Days']).reset_index(drop=True)  # 'Country/Region',
+
     # add intercept
     df['intercept'] = 1.0
-    
+
     # identify covariate value for our location
-    location_cov = cov_df.loc[cov_df['Location'] == args.model_location, 
+    location_cov = cov_df.loc[cov_df['Location'] == args.model_location,
                               COVARIATE].item()
-    
+
     # don't let it be below 10 / 28
     if location_cov < 0.36:
         location_cov = 0.36
-        
+
     # get list of peaked locations
     peaked_df = pd.read_csv(args.peaked_file)
     peaked_df['location_id'] = '_' + peaked_df['location_id'].astype(str)
-    
+
     # run models
     model_seed = get_hash(args.model_location)
     np.random.seed(model_seed)
     tight_model, loose_model, draws = death_model(
-        df[['location_id', 'Location', 'intercept', 'Days', 'ln(age-standardized death rate)', COVARIATE]], 
+        df[['location_id', 'Location', 'intercept', 'Days', 'ln(age-standardized death rate)', COVARIATE]],
         f'_{args.model_location_id}', location_cov, args.n_draws,
         peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
         exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id'].unique().tolist()
     )
-    
+
     ## store outputs
     # data
     df.to_csv(f'{args.output_dir}/data.csv', index=False)
@@ -421,21 +421,20 @@ def run_death_models():
     # blended draws
     with open(f'{args.output_dir}/draws.pkl', 'wb') as fwrite:
         pickle.dump(draws, fwrite, -1)
-        
+
     # plot
     with PdfPages(f'{args.output_dir}/model_fits.pdf') as pdf:
         for location in tight_model.models.keys():
             location_name = df.loc[df['location_id'] == location, 'Location'].values[0]
             plot_location(location=location,
                           location_name=location_name,
-                          covariate_val=cov_df.loc[cov_df['Location'] == location_name, COVARIATE].item(), 
-                          tm=tight_model.models[location], 
-                          lm=loose_model.models[location], 
-                          draw=draws[location], 
-                          population=df.loc[df['location_id'] == location, 'population'].values[0], 
+                          covariate_val=cov_df.loc[cov_df['Location'] == location_name, COVARIATE].item(),
+                          tm=tight_model.models[location],
+                          lm=loose_model.models[location],
+                          draw=draws[location],
+                          population=df.loc[df['location_id'] == location, 'population'].values[0],
                           pdf=pdf)
-    
-    
+
+
 if __name__ == '__main__':
     run_death_models()
-    
