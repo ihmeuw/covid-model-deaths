@@ -17,10 +17,10 @@ COV_SETTINGS = [('equal', [1, 1, 1]),
 KS = [21]  # 14,
 # TODO: use drmaa and a job template.
 QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -l m_mem_free=3G -l fthread=3 -o omp_num_threads=3 '\
-    '-e /share/temp/sgeoutput/covid_deaths ' \ 
-    '{code_dir}/{env}_env.sh {code_dir}/model.py '\
-    '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
-    '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --n_draws {n_draws}'
+           '-e /share/temp/sgeoutput/covid_deaths '\
+           '{code_dir}/{env}_env.sh {code_dir}/model.py '\
+           '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
+           '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --n_draws {n_draws}'
 # FIXME: Defined in multiple places.
 RATE_THRESHOLD = -15
 
