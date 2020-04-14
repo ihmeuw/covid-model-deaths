@@ -1,24 +1,19 @@
-import os
-import sys
 import argparse
-
 from copy import deepcopy
-import dill as pickle
-
 import hashlib
-import math
-from scipy import stats
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
+import warnings
 
 import curvefit
 from curvefit.test_pipline import APModel
-from curvefit.utils import get_derivative_of_column_in_log_space, get_obs_se
-from curvefit.utils import truncate_draws, data_translator, convex_combination
+from curvefit.utils import get_derivative_of_column_in_log_space
+from curvefit.utils import truncate_draws, convex_combination
+import dill as pickle
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import numpy as np
+import pandas as pd
 
-import warnings
+
 warnings.filterwarnings('ignore')
 
 RATE_THRESHOLD = -15  # should pass this in as argument
@@ -41,12 +36,11 @@ def get_hash(key: str) -> int:
 
 
 def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclude_groups, pred_days=150):
-    # our dataset
+    """Forecast deaths."""
     df = df.copy()
-
-    ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
-    ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
-    ## SET UP
+    ##########
+    # SET UP #
+    ##########
     # basic information and model setting
     basic_info_dict = dict(
         all_cov_names=[COVARIATE],
@@ -97,10 +91,10 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         }
     )
 
-    # draw related paramters
+    # draw related parameters
     draw_dict = dict(
         n_draws=n_draws,
-        prediction_times = np.arange(pred_days),
+        prediction_times=np.arange(pred_days),
         cv_threshold=1e-4,
         smoothed_radius=[5, 5],
         exclude_groups=exclude_groups,
@@ -114,8 +108,8 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
 
     # for prediction of places with no data
     alpha_times_beta = np.exp(0.7)
-    obs_bounds = [30, np.inf] # filter the data rich models
-    predict_cov = np.array([1.0, location_cov, 1.0]) # new covariates for the places.
+    obs_bounds = [30, np.inf]  # filter the data rich models
+    predict_cov = np.array([1.0, location_cov, 1.0])  # new covariates for the places.
 
     # tight prior control panel
     tight_info_dict = {
@@ -123,9 +117,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         'fun': curvefit.log_erf,
         'col_obs': 'ln(age-standardized death rate)',
         'obs_se_func': lambda x: (1 / (1.0 + x)),
-        'prior_modifier': lambda x: 10**(min(0.0, max(-1.0,
-                    0.1*x - 1.5
-        ))) / 10
+        'prior_modifier': lambda x: 10**(min(0.0, max(-1.0, 0.1*x - 1.5))) / 10
     }
     tight_fit_dict = {
         **deepcopy(basic_fit_dict),
@@ -154,9 +146,9 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
     )
     df['daily deaths'] = np.exp(df['d ' + tight_info_dict['col_obs']])
 
-    ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
-    ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
-    ## RUN MODEL
+    #############
+    # RUN MODEL #
+    #############
     # The Alpha Prior Model
     tight_model = APModel(
         all_data=df,
@@ -165,10 +157,6 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         basic_model_dict=basic_model_dict,
         fit_dict=tight_fit_dict
     )
-    #fe_gprior = tight_model.fit_dict['fe_gprior']
-    #tight_model.fit_dict.update({
-    #    'fe_gprior': [fe_gprior[0], [fe_gprior[1][0], 0.1], fe_gprior[2]]
-    #})
     tight_model.run(**draw_dict)
     loose_model = APModel(
         all_data=df,
@@ -185,8 +173,8 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
     combined_draws = {}
     for group in tight_draws.keys():
         draws = convex_combination(np.arange(tight_draws[group][1].shape[1]),
-                                   tight_draws[group][1][np.argsort(tight_draws[group][1][:,-1]),:],
-                                   loose_draws[group][1][np.argsort(loose_draws[group][1][:,-1]),:],
+                                   tight_draws[group][1][np.argsort(tight_draws[group][1][:, -1]), :],
+                                   loose_draws[group][1][np.argsort(loose_draws[group][1][:, -1]), :],
                                    basic_info_dict['predict_space'],
                                    start_day=start_day,
                                    end_day=end_day)
@@ -235,8 +223,8 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         last_obs_space=loose_info_dict['fun']
     )
     draws = convex_combination(np.arange(overall_tight_draws.shape[1]),
-                               overall_tight_draws[np.argsort(overall_tight_draws[:,-1]),:],
-                               overall_loose_draws[np.argsort(overall_loose_draws[:,-1]),:],
+                               overall_tight_draws[np.argsort(overall_tight_draws[:, -1]), :],
+                               overall_loose_draws[np.argsort(overall_loose_draws[:, -1]), :],
                                basic_info_dict['predict_space'],
                                start_day=start_day,
                                end_day=end_day)
@@ -249,6 +237,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
 
 
 def plot_location(location, location_name, covariate_val, tm, lm, draw, population, pdf=None, pred_days=150):
+    """Plot death forecasts."""
     # get past curve point estimates
     tight_curve_t = np.arange(pred_days)
     tight_curve = tm.predict(tight_curve_t, group_name=location)
@@ -294,26 +283,26 @@ def plot_location(location, location_name, covariate_val, tm, lm, draw, populati
                           color='dodgerblue', alpha=0.25)
     ax[1, 0].set_ylabel('deaths')
     ax[1, 0].set_xlim(0, draw[0].max())
-    ax[1, 0].set_ylim(0, np.quantile(np.exp(draw[1])*population, 0.975, axis=0).max()*1.1)
+    ax[1, 0].set_ylim(0, np.quantile(np.exp(draw[1])*population, 0.975, axis=0).max() * 1.1)
     ax[1, 0].set_xlabel('days')
-
 
     # daily deaths
     ax[1, 1].scatter(tm.t[1:], np.exp(tm.obs)[1:]*population - np.exp(tm.obs)[:-1]*population,
                      c='dodgerblue', edgecolors='navy')
-    ax[1, 1].plot(draw[0][1:], (np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population).mean(axis=0),
+    ax[1, 1].plot(draw[0][1:], (np.exp(draw[1])[:, 1:]*population - np.exp(draw[1])[:, :-1]*population).mean(axis=0),
                   color='dodgerblue')
     ax[1, 1].plot(tight_curve_t[1:], np.exp(tight_curve)[1:]*population - np.exp(tight_curve)[:-1]*population,
                   color='forestgreen')
     ax[1, 1].plot(loose_curve_t[1:], np.exp(loose_curve)[1:]*population - np.exp(loose_curve)[:-1]*population,
                   color='firebrick')
     ax[1, 1].fill_between(draw[0][1:],
-                          np.quantile(np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population, 0.025, axis=0),
-                          np.quantile(np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population, 0.975, axis=0),
+                          np.quantile(np.exp(draw[1])[:, 1:]*population
+                                      - np.exp(draw[1])[:, :-1]*population, 0.025, axis=0),
+                          np.quantile(np.exp(draw[1])[:, 1:]*population
+                                      - np.exp(draw[1])[:, :-1]*population, 0.975, axis=0),
                           color='dodgerblue', alpha=0.25)
     ax[1, 1].set_ylabel('daily deaths')
     ax[1, 1].set_xlim(0, draw[0].max())
-    #ax[1, 1].set_ylim(0, np.quantile(np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population, 0.975, axis=0).max()*1.1)
     ax[1, 1].set_xlabel('days')
 
     plt.suptitle(f'{location_name} - SD cov: {np.round(covariate_val, 2)}', y=1.00025)
@@ -371,12 +360,11 @@ def run_death_models():
     # encode location_id so we don't end up w/ indexing issues
     df['location_id'] = '_' + df['location_id'].astype(str)
 
-    # attach covs to data file -- should check if scenario run is necessary for location, so
-    # as not to be wasteful...
+    # attach covs to data file -- should check if scenario run is necessary
+    # for location, so as not to be wasteful...
     df = pd.merge(df, cov_df[['Location', COVARIATE]], how='left')
     if df[COVARIATE].isnull().any():
         missing_locs = df.loc[df[COVARIATE].isnull(), 'Location'].unique().tolist()
-        #raise ValueError(f'The following locations are missing covariates: {", ".join(missing_locs)}')
         print(f'The following locations are missing covariates: {", ".join(missing_locs)}')
         df = df.loc[~df[COVARIATE].isnull()]
     df = df.sort_values(['location_id', 'Days']).reset_index(drop=True)  # 'Country/Region',
@@ -402,11 +390,16 @@ def run_death_models():
     tight_model, loose_model, draws = death_model(
         df[['location_id', 'Location', 'intercept', 'Days', 'ln(age-standardized death rate)', COVARIATE]],
         f'_{args.model_location_id}', location_cov, args.n_draws,
-        peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-        exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id'].unique().tolist()
+        peaked_groups=(peaked_df
+                       .loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id']
+                       .to_list()),
+        exclude_groups=(peaked_df
+                        .loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id']
+                        .unique()
+                        .tolist())
     )
 
-    ## store outputs
+    # store outputs
     # data
     df.to_csv(f'{args.output_dir}/data.csv', index=False)
     # loose

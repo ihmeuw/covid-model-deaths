@@ -21,9 +21,12 @@ RENAME = {
 
 
 class SocialDistCov:
-    closure_cols = ['People instructed to stay at home', 'Educational facilities closed',
-                    'Non-essential services closed (i.e., bars/restaurants)', 'Rationing of supplies and requsitioning of facilities',
-                    'Travel severely limited', 'Major reprioritisation of healthcare services']
+    closure_cols = ['People instructed to stay at home',
+                    'Educational facilities closed',
+                    'Non-essential services closed (i.e., bars/restaurants)',
+                    'Rationing of supplies and requsitioning of facilities',
+                    'Travel severely limited',
+                    'Major reprioritisation of healthcare services']
     closure_level_idx = [0, 1, 2, 4]
 
     def __init__(self, death_df: pd.DataFrame, date_df: pd.DataFrame = None, data_version: str = 'best'):
@@ -100,7 +103,7 @@ class SocialDistCov:
 
         # get days from threshold
         df = self.thresh_df.merge(self.closure_df)
-        for i in (self.closure_level_idx):
+        for i in self.closure_level_idx:
             df[f'closure_id_{i}'] = df.apply(lambda x: (x[self.closure_cols[i]] - x['threshold_date']).days, axis=1)
 
         # get smallest [n_levels] day counts out of our list of closure dates
@@ -113,7 +116,7 @@ class SocialDistCov:
             )
         closure_vars = [f'closure_{i+1}' for i in range(n_levels)]
 
-        ## 1 week
+        # 1 week
         # get composite
         df['composite_1w'] = (df[closure_vars] * weights).sum(axis=1)
 
@@ -125,7 +128,7 @@ class SocialDistCov:
                 axis=1
             )
 
-        ## 2 week
+        # 2 week
         # get composite
         df['composite_2w'] = (df[closure_vars] * weights).sum(axis=1)
 
@@ -137,7 +140,7 @@ class SocialDistCov:
                 axis=1
             )
 
-        ## 3 weeks
+        # 3 weeks
         # get composite
         df['composite_3w'] = (df[closure_vars] * weights).sum(axis=1)
 

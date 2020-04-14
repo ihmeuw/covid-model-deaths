@@ -1,13 +1,13 @@
 from typing import List, Optional, Tuple
 
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
 
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-
 
 def fill_draw(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace last missing draw with second to last draw."""
     # FIXME: Yikes, what's this about?
     if 'draw_999' not in df.columns:
         df['draw_999'] = df['draw_998']
@@ -19,7 +19,7 @@ class CompareAveragingModelDeaths:
 
     def __init__(self, raw_draw_path: str, average_draw_path: str,
                  yesterday_draw_path: str, before_yesterday_draw_path: str,
-                 draws: List[str] = [f'draw_{i}' for i in range(1000)]):
+                 draws: List[str] = (f'draw_{i}' for i in range(1000))):
         self.old_df = pd.read_csv(raw_draw_path)
         self.old_df = fill_draw(self.old_df)
         self.new_df = pd.read_csv(average_draw_path)
@@ -28,7 +28,7 @@ class CompareAveragingModelDeaths:
         self.yesterday_df = fill_draw(self.yesterday_df)
         self.before_yesterday_df = pd.read_csv(before_yesterday_draw_path)
         self.before_yesterday_df = fill_draw(self.before_yesterday_df)
-        self.draws = draws
+        self.draws = list(draws)
 
     @staticmethod
     def _get_deaths_per_day(draw_df: pd.DataFrame, draws: List[str]) -> pd.DataFrame:
@@ -82,9 +82,10 @@ class CompareAveragingModelDeaths:
                 yesterday_df, yesterday_daily_df, before_yesterday_df, before_yesterday_daily_df)
 
     def make_some_pictures(self, pdf_out_path: str, agg_location: str = None) -> None:
+        """Plot old averages and deaths versus new averages and deaths."""
         old_df, old_daily_df, new_df, new_daily_df, \
             yesterday_df, yesterday_daily_df, before_yesterday_df, before_yesterday_daily_df \
-             = self._summarize_draws(agg_location)
+            = self._summarize_draws(agg_location)
         with PdfPages(pdf_out_path) as pdf:
             for location in new_df['location'].unique():
                 fig, ax = plt.subplots(1, 2, figsize=(16.5, 8.5))

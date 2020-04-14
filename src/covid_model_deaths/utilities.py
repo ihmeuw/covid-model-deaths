@@ -1,11 +1,11 @@
 import os
+import time
 from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
-import time
 
 
 
@@ -13,13 +13,13 @@ import time
 #  covariates.
 COV_SETTINGS = [('equal', [1, 1, 1]),
                 ('ascmid', [0.5, 1, 2]),
-                ('ascmax', [0, 0, 1])]  # ('descmid', [2, 1, 0.5]), ('descmax', [1, 0, 0]),
+                ('ascmax', [0, 0, 1])]
 # TODO: Don't know what this is at all.
-KS = [21]  # 14,
+KS = [21]
 # TODO: use drmaa and a job template.
 QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=6G -l fthread=3 '\
-           '-o /share/temp/sgeoutput/collijk/output/ '\
-           '-e /share/temp/sgeoutput/collijk/errors/ '\
+           '-o /share/temp/sgeoutput/covid/output/ '\
+           '-e /share/temp/sgeoutput/covid/errors/ '\
            '{python} {code_dir}/model.py '\
            '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
            '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --n_draws={n_draws}'
@@ -191,17 +191,6 @@ class CompareModelDeaths:
                 )
                 ax[0].set_xlabel('Date')
                 ax[0].set_ylabel('Cumulative deaths')
-                # plt.fill_between(
-                #     alt_df.loc[alt_df['location'] == location, 'date'],
-                #     alt_df.loc[alt_df['location'] == location, 'val_lower'],
-                #     alt_df.loc[alt_df['location'] == location, 'val_upper'],
-                #     alpha=0.25, color='forestgreen'
-                # )
-                # plt.plot(
-                #     alt_df.loc[alt_df['location'] == location, 'date'],
-                #     alt_df.loc[alt_df['location'] == location, 'val_mean'],
-                #     color='forestgreen', label='new model/old data'
-                # )
 
                 # daily
                 ax[1].fill_between(
