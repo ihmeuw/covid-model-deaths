@@ -24,7 +24,7 @@ from covid_model_deaths.utilities import submit_curvefit, CompareModelDeaths
 
 
 def run_us_model(input_data_version: str, peak_file: str, output_path: str, datestamp_label: str,
-                 yesterday_draw_path: str, before_yesterday_draw_path: str, previous_average_draw_path: str):
+                 yesterday_draw_path: str, before_yesterday_draw_path: str, previous_average_draw_path: str) -> None:
     full_df = get_input_data('full_data', input_data_version)
     death_df = get_input_data('deaths', input_data_version)
     age_pop_df = get_input_data('age_pop', input_data_version)
@@ -130,7 +130,7 @@ def make_date_mean_df(threshold_dates: pd.DataFrame) -> pd.DataFrame:
 def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                   age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame,
                   location_ids: List[int], location_names: List[str],
-                  peak_file: str, output_directory: str):
+                  peak_file: str, output_directory: str) -> None:
     # submit models
     n_scenarios = len(cmd_globals.COV_SETTINGS) * len(cmd_globals.KS)
     n_draws = [int(1000 / n_scenarios)] * n_scenarios
@@ -175,7 +175,9 @@ def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                                 n_draws=n_draws[n_i])
 
 
-def compile_draws(location_ids, location_names, ensemble_dirs, obs_df, threshold_dates, age_pop_df):
+def compile_draws(location_ids: List[int], location_names: List[str], ensemble_dirs: List[str],
+                  obs_df: pd.DataFrame, threshold_dates: pd.DataFrame, age_pop_df: pd.DataFrame
+                  ) -> Tuple[List[pd.DataFrame], List[pd.DataFrame], List, List, List[pd.DataFrame]]:
     draw_dfs = []
     past_draw_dfs = []
     models_used = []
@@ -201,7 +203,7 @@ def compile_draws(location_ids, location_names, ensemble_dirs, obs_df, threshold
     return draw_dfs, past_draw_dfs, models_used, days_, ensemble_draws_dfs
 
 
-def average_draws(output_dir: str, yesterday_path: str, before_yesterday_path: str):
+def average_draws(output_dir: str, yesterday_path: str, before_yesterday_path: str) -> pd.DataFrame:
     raw_draw_path = f'{output_dir}/state_data.csv'
     avg_df = moving_average_predictions(
         'US',
@@ -214,7 +216,8 @@ def average_draws(output_dir: str, yesterday_path: str, before_yesterday_path: s
     return avg_df
 
 
-def make_and_save_draw_plots(output_dir, location_ids, location_names, ensemble_draw_dfs, days_, models_used):
+def make_and_save_draw_plots(output_dir: str, location_ids: List[int], location_names: List[str],
+                             ensemble_draw_dfs: List[pd.DataFrame], days_: List, models_used: List) -> str:
     # plot ensemble
     # ensemble plot settings
     color_dict = {
@@ -276,8 +279,8 @@ def make_and_save_draw_plots(output_dir, location_ids, location_names, ensemble_
     return plot_path
 
 
-def make_and_save_compare_average_plots(output_dir, raw_draw_path, average_draw_path,
-                                        yesterday_draw_path, before_yesterday_draw_path) -> str:
+def make_and_save_compare_average_plots(output_dir: str, raw_draw_path: str, average_draw_path: str,
+                                        yesterday_draw_path: str, before_yesterday_draw_path: str) -> str:
     plotter = CompareAveragingModelDeaths(
         raw_draw_path=raw_draw_path,
         average_draw_path=average_draw_path,
@@ -289,7 +292,8 @@ def make_and_save_compare_average_plots(output_dir, raw_draw_path, average_draw_
     return plot_path
 
 
-def make_and_save_compare_to_previous_plots(output_dir, today_average_path, previous_average_path) -> str:
+def make_and_save_compare_to_previous_plots(output_dir: str, today_average_path: str,
+                                            previous_average_path: str) -> str:
     plotter = CompareModelDeaths(
         old_draw_path=previous_average_path,
         new_draw_path=today_average_path
@@ -299,13 +303,14 @@ def make_and_save_compare_to_previous_plots(output_dir, today_average_path, prev
     return plot_path
 
 
-def send_plots_to_diagnostics(datestamp_label: str, *plot_paths: str):
+def send_plots_to_diagnostics(datestamp_label: str, *plot_paths: str) -> None:
     viz_dir = Path(f'/home/j/Project/covid/results/diagnostics/deaths/{datestamp_label}/')
     if not os.path.exists(viz_dir):
         os.mkdir(viz_dir)
     for plot_path in plot_paths:
         plot_path = Path(plot_path)
         shutil.copyfile(src=plot_path, dst=viz_dir / plot_path.name)
+
 
 def get_location_ids(data: pd.DataFrame) -> List[int]:
     rate_above_threshold = np.log(data[COLUMNS.death_rate]) > cmd_globals.LN_MORTALITY_RATE_THRESHOLD
@@ -333,7 +338,8 @@ def get_us_location_ids_and_names(full_df: pd.DataFrame) -> Tuple[List[int], Lis
     return us_location_ids, us_location_names
 
 
-def backcast_deaths_parallel(location_ids, death_df, age_pop_df, age_death):
+def backcast_deaths_parallel(location_ids: List[int], death_df: pd.DataFrame,
+                             age_pop_df: pd.DataFrame, age_death: pd.DataFrame) -> pd.DataFrame:
     _combiner = functools.partial(backcast_deaths,
                                   input_death_df=death_df,
                                   input_age_pop_df=age_pop_df,
@@ -372,7 +378,7 @@ def backcast_deaths(location_id: int, death_df: pd.DataFrame,
     return mod_df[output_columns].reset_index(drop=True)
 
 
-def date_mean(dates):
+def date_mean(dates: pd.Series) -> datetime:
     dt_min = dates.min()
     deltas = [x-dt_min for x in dates]
     return dt_min + sum(deltas) / len(deltas)
