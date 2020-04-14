@@ -1,19 +1,14 @@
+from datetime import timedelta
 from typing import NamedTuple
-
-from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import seaborn as sns
-
-sns.set_style('whitegrid')
-
 import numpy as np
 import pandas as pd
+import seaborn as sns
 
 
-# pd.options.display.max_columns = 9999
-# pd.options.display.max_rows = 9999
+sns.set_style('whitegrid')
 
 
 class _Measures(NamedTuple):
@@ -216,7 +211,7 @@ class DeathModelData:
         del df['Delta ln(asdr)']
 
         # fill in missing days and smooth
-        loc_df_list = [df.loc[df['location_id'] == l] for l in df['location_id'].unique()]
+        loc_df_list = [df.loc[df['location_id'] == loc_id] for loc_id in df['location_id'].unique()]
         df = pd.concat([self._moving_average_lnasdr(loc_df) for loc_df in loc_df_list]).reset_index(drop=True)
 
         ###############################
@@ -299,8 +294,7 @@ class DeathModelData:
             # day) no longer add date, since we have partial days
             if df['Days'].min() != 0:
                 raise ValueError(f'First day is not 0, as expected... (location_id: {location_id})')
-            bc_df['Days'] = -(bc_df.index) - (start_rep - bc_rates[-1]) / bc_step
-            # bc_df['Date'] = [df['Date'].min() - timedelta(days=x+1) for x in range(len(bc_df))]
+            bc_df['Days'] = -bc_df.index - (start_rep - bc_rates[-1]) / bc_step
 
             # don't project more than 10 days back, or we will have PROBLEMS
             bc_df = (bc_df
@@ -332,12 +326,12 @@ class DeathModelData:
 
         # FIXME: Shadowing variable from outer scope.  Make a separate
         #  function.
-        def moving_3day_avg(day, df):
+        def moving_3day_avg(day, data):
             # determine difference
             days = np.array([day-1, day, day+1])
             days = days[days >= 0]
-            days = days[days <= df['Days'].max()]
-            avg = df.loc[df['Days'].isin(days), 'ln(age-standardized death rate)'].mean()
+            days = days[days <= data['Days'].max()]
+            avg = data.loc[data['Days'].isin(days), 'ln(age-standardized death rate)'].mean()
 
             return avg
 
