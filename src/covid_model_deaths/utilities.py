@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import time
 from typing import List, Optional, Tuple
 
@@ -7,35 +8,25 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
 
-
-
-# TODO: Document better.  These are about the mix of social distancing
-#  covariates.
-COV_SETTINGS = [('equal', [1, 1, 1]),
-                ('ascmid', [0.5, 1, 2]),
-                ('ascmax', [0, 0, 1])]
-# TODO: Don't know what this is at all.
-KS = [21]
 # TODO: use drmaa and a job template.
 QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=6G -l fthread=3 '\
            '-o /share/temp/sgeoutput/covid/output/ '\
            '-e /share/temp/sgeoutput/covid/errors/ '\
-           '{python} {code_dir}/model.py '\
+           '{python} {model_file} '\
            '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
            '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --n_draws={n_draws}'
 # FIXME: Defined in multiple places.
 RATE_THRESHOLD = -15
 
 
-def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, model_location: str,
+def submit_curvefit(job_name: str, location_id: int, model_location: str,
                     model_location_id: int, data_file: str, cov_file: str, peaked_file: str, output_dir: str,
                     n_draws: int, python: str, verbose: bool = False):
     qsub_str = QSUB_STR.format(
         job_name=job_name,
         location_id=location_id,
-        code_dir=code_dir,
-        env=env,
         python=python,
+        model_file=str(Path(__file__).parent / 'model.py'),
         # FIXME: Abstract string formatting somewhere else.
         model_location=sanitize(model_location),
         model_location_id=model_location_id,
