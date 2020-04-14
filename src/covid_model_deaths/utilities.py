@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
+import time
 
 
 
@@ -16,7 +17,7 @@ COV_SETTINGS = [('equal', [1, 1, 1]),
 # TODO: Don't know what this is at all.
 KS = [21]  # 14,
 # TODO: use drmaa and a job template.
-QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=3G -l fthread=3 '\
+QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=6G -l fthread=3 '\
            '-o /share/temp/sgeoutput/collijk/output/ '\
            '-e /share/temp/sgeoutput/collijk/errors/ '\
            '{python} {code_dir}/model.py '\
@@ -28,7 +29,7 @@ RATE_THRESHOLD = -15
 
 def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, model_location: str,
                     model_location_id: int, data_file: str, cov_file: str, peaked_file: str, output_dir: str,
-                    n_draws: int, python: str):
+                    n_draws: int, python: str, verbose: bool = False):
     qsub_str = QSUB_STR.format(
         job_name=job_name,
         location_id=location_id,
@@ -44,11 +45,18 @@ def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, mo
         output_dir=sanitize(output_dir),
         n_draws=n_draws
     )
-    print(qsub_str)
-
-    job_str = os.popen(qsub_str).read()
+    if verbose:
+        print(qsub_str)
+    job_str = ''
+    while not job_str:
+        job_str = os.popen(qsub_str).read()
+        if not job_str:
+            print("Job submission failed. Retrying in 30 seconds...")
+            print("Please try running qstat.")
+            time.sleep(30)
     print(job_str)
-    
+
+
 def sanitize(shell_string):
     shell_string = shell_string.replace(' ', '\ ').replace('(', '\(').replace(')', '\)')
     return f'"{shell_string}"'
