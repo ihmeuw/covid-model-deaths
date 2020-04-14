@@ -25,6 +25,7 @@ if __name__ == "__main__":
         'openpyxl',
         'numpy',
         'scipy',
+        'sklearn',
         'matplotlib',
         'seaborn',
         'db_queries'

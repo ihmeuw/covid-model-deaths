@@ -101,7 +101,8 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
     draw_dict = dict(
         n_draws=n_draws,
         prediction_times = np.arange(pred_days),
-        cv_threshold=1e-4,
+        cv_lower_threshold=1e-4,
+        cv_upper_threshold=1.,
         smoothed_radius=[5, 5],
         exclude_groups=exclude_groups,
         exclude_below=0,
@@ -114,7 +115,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
 
     # for prediction of places with no data
     alpha_times_beta = np.exp(0.7)
-    obs_bounds = [25, np.inf] # filter the data rich models
+    obs_bounds = [30, np.inf] # filter the data rich models
     predict_cov = np.array([1.0, location_cov, 1.0]) # new covariates for the places.
     
     # tight prior control panel
@@ -201,7 +202,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
     )
     overall_tight_draws = tight_model.create_overall_draws(
         draw_dict['prediction_times'], filtered_tight_models, predict_cov, alpha_times_beta=alpha_times_beta, 
-        sample_size=draw_dict['n_draws'], slope_at=10, epsilon=draw_dict['cv_threshold']
+        sample_size=draw_dict['n_draws'], slope_at=10, epsilon=draw_dict['cv_lower_threshold']
     )
     filtered_loose_models = loose_model.run_filtered_models(
         df=loose_model.all_data, obs_bounds=obs_bounds
@@ -327,13 +328,13 @@ def plot_location(location, location_name, covariate_val, tm, lm, draw, populati
 def run_death_models():
     """
     args = argparse.Namespace(
-        model_location='New York',
-        model_location_id=555,
-        data_file='/ihme/covid-19/deaths/prod/2020_04_08_US_cov_1w/model_data_equal_21/New York.csv',
-        cov_file='/ihme/covid-19/deaths/prod/2020_04_08_US_cov_1w/model_data_equal_21/New York covariate.csv',
+        model_location='Colorado',
+        model_location_id=528,
+        data_file='/ihme/covid-19/deaths/dev/2020_04_12_US_downsample/_data_last/model_data_equal_21/Colorado.csv',
+        cov_file='/ihme/covid-19/deaths/dev/2020_04_12_US_downsample/_data_last/model_data_equal_21/Colorado covariate.csv',
         peaked_file='/ihme/code/rmbarber/covid_19_ihme/final_peak_locs_04_09.csv',
-        output_dir='/ihme/covid-19/deaths/prod/2020_04_08_US_cov_1w/model_data_equal_21/New York',
-        n_draws=333
+        output_dir='/ihme/covid-19/deaths/dev/2020_04_12_US_downsample/_data_last/model_data_equal_21/Colorado',
+        n_draws=1000
     )
     """
     parser = argparse.ArgumentParser()
@@ -365,7 +366,7 @@ def run_death_models():
     cov_df = pd.read_csv(args.cov_file)
     
     # try setting floor for covariate
-    cov_df.loc[cov_df[COVARIATE] < 0.1, COVARIATE] = 0.1
+    cov_df.loc[cov_df[COVARIATE] < 0.25, COVARIATE] = 0.25
     
     # encode location_id so we don't end up w/ indexing issues
     df['location_id'] = '_' + df['location_id'].astype(str)
@@ -405,6 +406,14 @@ def run_death_models():
         exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id'].unique().tolist()
     )
     
+    # only save this location and overall draws
+    subset_draws = dict()
+    for model_label in [f'_{args.model_location_id}', 'overall']:
+        if model_label in list(draws.keys()):
+            subset_draws.update({
+                model_label: draws[model_label]
+            })
+    
     ## store outputs
     # data
     df.to_csv(f'{args.output_dir}/data.csv', index=False)
@@ -418,9 +427,9 @@ def run_death_models():
         pickle.dump(tight_model.models, fwrite, -1)
     with open(f'{args.output_dir}/tight_model_fit_dict.pkl', 'wb') as fwrite:
         pickle.dump(tight_model.fit_dict, fwrite, -1)
-    # blended draws
+    # blended draws (SUBSET)
     with open(f'{args.output_dir}/draws.pkl', 'wb') as fwrite:
-        pickle.dump(draws, fwrite, -1)
+        pickle.dump(subset_draws, fwrite, -1)
         
     # plot
     with PdfPages(f'{args.output_dir}/model_fits.pdf') as pdf:
