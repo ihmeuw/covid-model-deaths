@@ -14,6 +14,20 @@ if __name__ == "__main__":
         long_description = f.read()
 
     install_requirements = [
+        'jupyter',
+        'jupyterlab',
+        'ipdb',
+        'dill',
+        'pandas',
+        'xlrd',
+        'pyarrow',
+        'openpyxl',
+        'numpy',
+        'scipy',
+        'matplotlib',
+        'seaborn',
+        'db_queries',
+        'curvefit @ git+https://github.com/ihmeuw-msca/CurveFit@product#egg=curvefit'
     ]
 
     test_requirements = [
