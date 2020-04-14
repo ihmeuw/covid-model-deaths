@@ -19,7 +19,7 @@ class CompareAveragingModelDeaths:
 
     def __init__(self, raw_draw_path: str, average_draw_path: str,
                  yesterday_draw_path: str, before_yesterday_draw_path: str,
-                 draws: List[str] = (f'draw_{i}' for i in range(1000))):
+                 draws: List[str] = [f'draw_{i}' for i in range(1000)]):
         self.old_df = pd.read_csv(raw_draw_path)
         self.old_df = fill_draw(self.old_df)
         self.new_df = pd.read_csv(average_draw_path)
@@ -28,7 +28,7 @@ class CompareAveragingModelDeaths:
         self.yesterday_df = fill_draw(self.yesterday_df)
         self.before_yesterday_df = pd.read_csv(before_yesterday_draw_path)
         self.before_yesterday_df = fill_draw(self.before_yesterday_df)
-        self.draws = list(draws)
+        self.draws = draws
 
     @staticmethod
     def _get_deaths_per_day(draw_df: pd.DataFrame, draws: List[str]) -> pd.DataFrame:
