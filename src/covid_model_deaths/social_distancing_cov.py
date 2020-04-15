@@ -20,7 +20,7 @@ RENAME = {
 }
 
 # TODO: get in snapshot/model-inputs
-MOBILITY_FILE = '/ihme/homes/xdai88/sd_effect/effs_on_DL_GLavg_SG.csv'
+EFFECT_FILE = '/ihme/covid-19/deaths/mobility_inputs/2020_04_14/effs_on_DL_GLavg_SG.csv'
 
 
 class SocialDistCov:
@@ -80,16 +80,39 @@ class SocialDistCov:
         df['threshold_date'] = df.apply(lambda x: x['Date'] - timedelta(days=np.round(x['Days'])), axis=1)
 
         # tack on mean date data
-        df = df[['Location', 'Country/Region', 'threshold_date']].reset_index(drop=True)
+        df = df[['location_id', 'Location', 'Country/Region', 'threshold_date']].reset_index(drop=True)
         if date_df is not None:
             df = df.append(
                 date_df.loc[~date_df['Location'].isin(df['Location'].unique().tolist()),
-                            ['Location', 'Country/Region', 'threshold_date']]
+                            ['location_id', 'Location', 'Country/Region', 'threshold_date']]
             ).reset_index(drop=True)
 
         return df
     
-    def _calc_composite_empirical_weights(self, empirical_weight_source):
+    def _calc_peak_date(self, prob: str, R0_file: str):
+        # get R0 == 1 file
+        r0_df = pd.read_csv(R0_file)
+        if prob == 'R0_35':
+            r0_df['R0 date'] = pd.to_datetime(r0_df['p35_date'])
+        elif prob == 'R0_50':
+            r0_df['R0 date'] = pd.to_datetime(r0_df['p50_date'])
+        elif prob == 'R0_65':
+            r0_df['R0 date'] = pd.to_datetime(r0_df['p65_date'])
+        
+        # get days from threshold
+        df = self.thresh_df.merge(r0_df[['location_id', 'R0 date']])
+        
+        # get predicted days from threshold to peak (will act directly on beta; 
+        # not actually composite like other covariates, should improve this)
+        df['cov_1w'] = df.apply(lambda x: (x['R0 date'] - x['threshold_date']).days + 19, axis=1)
+        df['cov_2w'] = np.nan
+        df['cov_3w'] = np.nan
+        df = df.loc[df['cov_1w'] > 0]
+        
+        return df[['Location', 'Country/Region', 'threshold_date', 'R0 date', 
+                   'cov_1w', 'cov_2w', 'cov_3w']]
+    
+    def _calc_composite_empirical_weights(self, empirical_weight_source: str):
         # map of closure codes to names
         code_map = {'ci_sd1':'People instructed to stay at home', 
                     'ci_sd2':'Educational facilities closed', 
@@ -98,7 +121,7 @@ class SocialDistCov:
                     'ci_psd3':'Any Business Closures'}
 
         # load data, just keep average
-        weight_df = pd.read_csv(MOBILITY_FILE)
+        weight_df = pd.read_csv(EFFECT_FILE)
         weight_df = weight_df.loc[weight_df['statistic'] == 'mean']
         if empirical_weight_source == 'google':
             weight_df = weight_df.loc[weight_df['metric'] == 'Google_avg_of_retail_transit_workplace']
@@ -217,19 +240,23 @@ class SocialDistCov:
                   + ['composite_1w', 'composite_2w', 'composite_3w']]
 
     # FIXME: mutable default
-    def get_cov_df(self, weights: Union[List[int], List[float], np.ndarray] = [1, 1, 1], k: int = 20, empirical_weight_source: str = None):
+    def get_cov_df(self, weights: Union[List[int], List[float], np.ndarray] = [1, 1, 1], k: int = 20, 
+                   empirical_weight_source: str = None, R0_file: str = None):
         # get composites
-        if empirical_weight_source is not None:
+        if empirical_weight_source in ['google', 'descartes', 'safegraph']:
             df = self._calc_composite_empirical_weights(empirical_weight_source)
+        elif empirical_weight_source in ['R0_35', 'R0_50', 'R0_65']:
+            df = self._calc_peak_date(empirical_weight_source, R0_file)
         else:
             df = self._calc_composite_explicit_weights(weights)
 
         # scale to Wuhan
-        wuhan_score_1w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_1w'].item()
-        wuhan_score_2w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_2w'].item()
-        wuhan_score_3w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_3w'].item()
-        df['cov_1w'] = (df['composite_1w'] + k) / (wuhan_score_1w + k)
-        df['cov_2w'] = (df['composite_2w'] + k) / (wuhan_score_2w + k)
-        df['cov_3w'] = (df['composite_3w'] + k) / (wuhan_score_3w + k)
+        if 'cov_1w' not in df.columns:
+            wuhan_score_1w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_1w'].item()
+            wuhan_score_2w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_2w'].item()
+            wuhan_score_3w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_3w'].item()
+            df['cov_1w'] = (df['composite_1w'] + k) / (wuhan_score_1w + k)
+            df['cov_2w'] = (df['composite_2w'] + k) / (wuhan_score_2w + k)
+            df['cov_3w'] = (df['composite_3w'] + k) / (wuhan_score_3w + k)
 
         return df.loc[~df['cov_1w'].isnull()].reset_index(drop=True)

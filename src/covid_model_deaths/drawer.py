@@ -31,7 +31,7 @@ class Drawer:
         self.population = population
         self.final_date = final_date
         
-    def _collect_draws(self, ensemble_dir, n_draws):
+    def _collect_draws(self, ensemble_dir, n_draws, peak_days=3):
         # read model outputs
         while not os.path.exists(f'{ensemble_dir}/{self.location_name}/draws.pkl'):
             print(f'    Waiting for {ensemble_dir}/{self.location_name}/draws.pkl...')
@@ -62,6 +62,11 @@ class Drawer:
             #     raise ValueError('Specified number of draws greater than number of draws in data.')
             # draws = resample(draws, n_draws, axis=0)
             raise ValueError('Specified nubmer of draws different from actual number of draws.')
+            
+        # expand out by peak duration of peak days
+        # if peaked: stream out first delta
+        # if not peaked: stream out idx of max delta
+        delta_draws = np.exp(draws[:,1:]) - np.exp(draws[:,:-1])
             
         return model_used, days, draws, past_pred
     

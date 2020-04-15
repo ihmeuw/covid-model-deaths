@@ -40,7 +40,7 @@ def get_hash(key: str) -> int:
     return int(hashlib.sha1(key.encode('utf8')).hexdigest(), 16) % 4294967295
 
 
-def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclude_groups, pred_days=150):
+def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclude_groups, fix_gamma, pred_days=150):
     # our dataset
     df = df.copy()
     
@@ -67,7 +67,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
     dummy_gprior = [0.0, np.inf]
     dummy_uprior = [-np.inf, np.inf]
     zero_uprior = [0.0, 0.0]
-    fe_init = np.array([-3, 28.0, -8.05])
+    fe_init = np.array([-2.5, 28.0, -8.05])
     fe_bounds = [[-np.inf, 0.0], [15.0, 100.0], [-10, -6]]
     options = {
         'ftol': 1e-10,
@@ -166,10 +166,11 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         basic_model_dict=basic_model_dict,
         fit_dict=tight_fit_dict
     )
-    #fe_gprior = tight_model.fit_dict['fe_gprior']
-    #tight_model.fit_dict.update({
-    #    'fe_gprior': [fe_gprior[0], [fe_gprior[1][0], 0.1], fe_gprior[2]]
-    #})
+    if fix_gamma:
+        fe_bounds = tight_model.fit_dict['fe_bounds']
+        tight_model.fit_dict.update({
+            'fe_bounds': [fe_bounds[0], [1, 1], fe_bounds[2]]
+        })
     tight_model.run(**draw_dict)
     loose_model = APModel(
         all_data=df,
@@ -178,6 +179,11 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
         basic_model_dict=basic_model_dict,
         fit_dict=loose_fit_dict
     )
+    if fix_gamma:
+        fe_bounds = loose_model.fit_dict['fe_bounds']
+        loose_model.fit_dict.update({
+            'fe_bounds': [fe_bounds[0], [1, 1], fe_bounds[2]]
+        })
     loose_model.run(**draw_dict)
     
     # get truncated draws
@@ -209,7 +215,7 @@ def death_model(df, model_location, location_cov, n_draws, peaked_groups, exclud
     )
     overall_loose_draws = loose_model.create_overall_draws(
         draw_dict['prediction_times'], filtered_loose_models, predict_cov, alpha_times_beta=alpha_times_beta, 
-        sample_size=draw_dict['n_draws'], slope_at=10, epsilon=draw_dict['cv_threshold']
+        sample_size=draw_dict['n_draws'], slope_at=10, epsilon=draw_dict['cv_lower_threshold']
     )
     
     # get specs and truncate overall, then combine
@@ -330,11 +336,12 @@ def run_death_models():
     args = argparse.Namespace(
         model_location='Colorado',
         model_location_id=528,
-        data_file='/ihme/covid-19/deaths/dev/2020_04_12_US_downsample/_data_last/model_data_equal_21/Colorado.csv',
-        cov_file='/ihme/covid-19/deaths/dev/2020_04_12_US_downsample/_data_last/model_data_equal_21/Colorado covariate.csv',
-        peaked_file='/ihme/code/rmbarber/covid_19_ihme/final_peak_locs_04_09.csv',
-        output_dir='/ihme/covid-19/deaths/dev/2020_04_12_US_downsample/_data_last/model_data_equal_21/Colorado',
-        n_draws=1000
+        data_file='/ihme/covid-19/deaths/dev/2020_04_14_US_mobility_covs/model_data_R0_35_21/Colorado.csv',
+        cov_file='/ihme/covid-19/deaths/dev/2020_04_14_US_mobility_covs/model_data_R0_35_21/Colorado covariate.csv',
+        peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_14/final_peak_locs_04_14.csv',
+        output_dir='/ihme/covid-19/deaths/dev/2020_04_14_US_mobility_covs/model_data_R0_35_21/Colorado',
+        covariate_effect='beta',
+        n_draws=166
     )
     """
     parser = argparse.ArgumentParser()
@@ -355,6 +362,9 @@ def run_death_models():
     )
     parser.add_argument(
         '--output_dir', help='Where we are storing results.', type=str
+    )
+    parser.add_argument(
+        '--covariate_effect', help='Whether covariate is acting on beta or gamma.', type=str
     )
     parser.add_argument(
         '--n_draws', help='How many samples to take.', type=int
@@ -396,6 +406,12 @@ def run_death_models():
     peaked_df = pd.read_csv(args.peaked_file)
     peaked_df['location_id'] = '_' + peaked_df['location_id'].astype(str)
     
+    # are we using a beta or gamma covariate
+    if args.covariate_effect == 'beta':
+        fix_gamma = True
+    elif args.covariate_effect == 'gamma':
+        fix_gamma = False
+    
     # run models
     model_seed = get_hash(args.model_location)
     np.random.seed(model_seed)
@@ -403,7 +419,8 @@ def run_death_models():
         df[['location_id', 'Location', 'intercept', 'Days', 'ln(age-standardized death rate)', COVARIATE]], 
         f'_{args.model_location_id}', location_cov, args.n_draws,
         peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-        exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id'].unique().tolist()
+        exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id'].unique().tolist(),
+        fix_gamma=fix_gamma
     )
     
     # only save this location and overall draws
