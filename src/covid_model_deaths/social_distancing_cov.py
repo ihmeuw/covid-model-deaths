@@ -29,7 +29,7 @@ class SocialDistCov:
     def __init__(self, death_df: pd.DataFrame, date_df: pd.DataFrame = None, data_version: str = 'best'):
         # read in and format closure data
         # TODO: Move to etl
-        self.closure_sheet = f'/ihme/covid-19/snapshot-data/{data_version}/covid_onedrive/Decrees for Closures/closure_criteria_sheet.xlsx'
+        self.closure_sheet = f'/ihme/covid-19/model-inputs/{data_version}/closure_criteria_sheet.xlsx'
         self.closure_df = self._process_closure_dataset()
 
         # use current date"
