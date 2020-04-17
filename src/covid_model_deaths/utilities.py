@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
+import time
 
 
 
@@ -23,6 +24,12 @@ QSUB_STR = 'qsub -N {job_name} -P proj_covid -q all.q -l m_mem_free=6G -l fthrea
     '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
     '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --last_day_file {last_day_file} '\
     ' --covariate_effect {covariate_effect} --n_draws {n_draws}'
+# QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=6G -l fthread=3 '\
+#            '-o /share/temp/sgeoutput/collijk/output/ '\
+#            '-e /share/temp/sgeoutput/collijk/errors/ '\
+#            '{python} {code_dir}/model.py '\
+#            '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
+#            '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --n_draws={n_draws}'
 # FIXME: Defined in multiple places.
 RATE_THRESHOLD = -15
 
@@ -30,13 +37,16 @@ RATE_THRESHOLD = -15
 def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, model_location: str,
                     model_location_id: int, data_file: str, cov_file: str, last_day_file: str,
                     peaked_file: str, output_dir: str, covariate_effect: str, n_draws: int):
+                    # model_location_id: int, data_file: str, cov_file: str, peaked_file: str, output_dir: str,
+                    # n_draws: int, python: str, verbose: bool = False):
     qsub_str = QSUB_STR.format(
         job_name=job_name,
         location_id=location_id,
         code_dir=code_dir,
         env=env,
+        python=python,
         # FIXME: Abstract string formatting somewhere else.
-        model_location=model_location.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
+        model_location=sanitize(model_location),
         model_location_id=model_location_id,
         data_file=data_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
         cov_file=cov_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
@@ -44,11 +54,28 @@ def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, mo
         peaked_file=peaked_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
         output_dir=output_dir.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
         covariate_effect=covariate_effect,
+        # data_file=sanitize(data_file),
+        # cov_file=sanitize(cov_file),
+        # peaked_file=sanitize(peaked_file),
+        # output_dir=sanitize(output_dir),
         n_draws=n_draws
     )
-
+    # if verbose:
+    #     print(qsub_str)
+    # job_str = ''
+    # while not job_str:
+    #     job_str = os.popen(qsub_str).read()
+    #     if not job_str:
+    #         print("Job submission failed. Retrying in 30 seconds...")
+    #         print("Please try running qstat.")
+    #         time.sleep(30)
     job_str = os.popen(qsub_str).read()
     print(job_str)
+
+
+def sanitize(shell_string):
+    shell_string = shell_string.replace(' ', '\ ').replace('(', '\(').replace(')', '\)')
+    return f'"{shell_string}"'
 
 
 def get_peak_date(past_draw_df, avg_df):
