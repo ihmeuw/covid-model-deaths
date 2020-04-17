@@ -17,18 +17,19 @@ MOBILITY_SOURCES = ['google', 'descartes', 'safegraph']
 # TODO: Don't know what this is at all.
 KS = [21]  # 14,
 # TODO: use drmaa and a job template.
-QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -l m_mem_free=6G -l fthread=3 -o omp_num_threads=3 '\
+QSUB_STR = 'qsub -N {job_name} -P proj_covid -q all.q -l m_mem_free=6G -l fthread=3 -o omp_num_threads=3 '\
     '-e /share/temp/sgeoutput/covid_deaths '\
     '{code_dir}/tools/{env}_env.sh {code_dir}/src/covid_model_deaths/model.py '\
     '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
-    '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --covariate_effect {covariate_effect} --n_draws {n_draws}'
+    '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} --last_day_file {last_day_file} '\
+    ' --covariate_effect {covariate_effect} --n_draws {n_draws}'
 # FIXME: Defined in multiple places.
 RATE_THRESHOLD = -15
 
 
 def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, model_location: str,
-                    model_location_id: int, data_file: str, cov_file: str, peaked_file: str, output_dir: str,
-                    covariate_effect: str, n_draws: int):
+                    model_location_id: int, data_file: str, cov_file: str, last_day_file: str,
+                    peaked_file: str, output_dir: str, covariate_effect: str, n_draws: int):
     qsub_str = QSUB_STR.format(
         job_name=job_name,
         location_id=location_id,
@@ -39,6 +40,7 @@ def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, mo
         model_location_id=model_location_id,
         data_file=data_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
         cov_file=cov_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
+        last_day_file=last_day_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
         peaked_file=peaked_file.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
         output_dir=output_dir.replace(' ', '\ ').replace('(', '\(').replace(')', '\)'),
         covariate_effect=covariate_effect,

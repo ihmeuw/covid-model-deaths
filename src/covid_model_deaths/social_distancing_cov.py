@@ -33,7 +33,7 @@ class SocialDistCov:
     def __init__(self, death_df: pd.DataFrame, date_df: pd.DataFrame = None, data_version: str = 'best'):
         # read in and format closure data
         # TODO: Move to etl
-        self.closure_sheet = f'/ihme/covid-19/snapshot-data/{data_version}/covid_onedrive/Decrees for Closures/closure_criteria_sheet.xlsx'
+        self.closure_sheet = f'/ihme/covid-19/model-inputs/{data_version}/closure_criteria_sheet.xlsx'
         self.closure_df = self._process_closure_dataset()
 
         # use current date"
@@ -159,16 +159,16 @@ class SocialDistCov:
         df.loc[df['ci_psd1'].isnull(), 'ci_psd1'] = df['ci_sd1']
         df.loc[df['ci_psd3'].isnull(), 'ci_psd3'] = df['ci_sd3']
 
-        # fill nulls with 1 week
+        # fill nulls with 3 weeks
         for closure_code in code_map.keys():
             df.loc[df[closure_code].isnull(), closure_code] =  df.loc[df[closure_code].isnull()].apply(
-                lambda x: (self.current_date - x['threshold_date']).days + 7, axis=1
+                lambda x: (self.current_date - x['threshold_date']).days + 21, axis=1
             )
         
         # combine w/ weights
-        df['composite_1w'] = (df[list(code_map.keys())] * np.array(list(weight_dict.values()))).sum(axis=1)
+        df['composite_1w'] = np.nan
         df['composite_2w'] = np.nan
-        df['composite_3w'] = np.nan
+        df['composite_3w'] = (df[list(code_map.keys())] * np.array(list(weight_dict.values()))).sum(axis=1)
 
         return df[['Location', 'Country/Region', 'threshold_date']
                           + list(code_map.keys())
@@ -259,4 +259,4 @@ class SocialDistCov:
             df['cov_2w'] = (df['composite_2w'] + k) / (wuhan_score_2w + k)
             df['cov_3w'] = (df['composite_3w'] + k) / (wuhan_score_3w + k)
 
-        return df.loc[~df['cov_1w'].isnull()].reset_index(drop=True)
+        return df.loc[~df['cov_3w'].isnull()].reset_index(drop=True)
