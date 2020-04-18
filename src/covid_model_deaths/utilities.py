@@ -27,7 +27,7 @@ QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=6G -l fth
 RATE_THRESHOLD = -15
 
 
-def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, model_location: str,
+def submit_curvefit(job_name: str, location_id: int, code_dir: str, model_location: str,
                     model_location_id: int, data_file: str, cov_file: str, last_day_file: str,
                     peaked_file: str, output_dir: str, covariate_effect: str, n_draws: int, python: str,
                     verbose: bool = False):
@@ -35,7 +35,6 @@ def submit_curvefit(job_name: str, location_id: int, code_dir: str, env: str, mo
         job_name=job_name,
         location_id=location_id,
         code_dir=code_dir,
-        env=env,
         python=python,
         model_location=sanitize(model_location),
         model_location_id=model_location_id,
