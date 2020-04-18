@@ -5,13 +5,14 @@ import time
 import dill as pickle
 import numpy as np
 import pandas as pd
+from scipy.signal import resample
 
 
 class Drawer:
     """Aggregates draws and stuff."""
 
-    def __init__(self, ensemble_dirs, location_name, location_id, obs_df, date_draws, population,
-                 final_date='2020-07-15', tag='location_id'):
+    def __init__(self, ensemble_dirs, n_draws_list, location_name, location_id, peak_duration,
+                 obs_df, date_draws, population, final_date='2020-07-15', tag='location_id'):
         # get our tagging of location_ids
         if tag == 'location_id':
             if not isinstance(location_id, str) or not location_id.startswith('_'):
@@ -21,32 +22,35 @@ class Drawer:
         else:
             self.location_tag = location_name
         self.ensemble_dirs = ensemble_dirs
+        self.n_draws_list = n_draws_list
         self.location_name = location_name
         self.location_id = location_id
+        self.peak_duration = peak_duration
         self.obs_df = obs_df
         self.date_draws = date_draws
         self.population = population
         self.final_date = final_date
 
-    def _collect_draws(self, ensemble_dir):
+    def _collect_draws(self, ensemble_dir, n_draws, peak_days=3):
         # read model outputs
         while not os.path.exists(f'{ensemble_dir}/{self.location_name}/draws.pkl'):
             print(f'    Waiting for {ensemble_dir}/{self.location_name}/draws.pkl...')
             time.sleep(30)
-        with open(f'{ensemble_dir}/{self.location_name}/loose_models.pkl', 'rb') as fread:
-            loose_models = pickle.load(fread)
+        if os.path.exists(f'{ensemble_dir}/{self.location_name}/loose_models.pkl'):
+            with open(f'{ensemble_dir}/{self.location_name}/loose_models.pkl', 'rb') as fread:
+                models = pickle.load(fread)
+        else:
+            with open(f'{ensemble_dir}/{self.location_name}/tight_models.pkl', 'rb') as fread:
+                models = pickle.load(fread)
         with open(f'{ensemble_dir}/{self.location_name}/draws.pkl', 'rb') as fread:
             model_draws = pickle.load(fread)
 
         # get predictions for given location, or use average if not present OR < 5 data points OR < 5 deaths
-        if self.location_tag in list(model_draws.keys()) and \
-            len(loose_models[self.location_tag].obs) >= 5 and \
-                self.obs_df['Deaths'].max() >= 5:
-            # use location
+        if self.location_tag in list(model_draws.keys()):
             model_used = 'location'
             days = model_draws[self.location_tag][0]
             draws = model_draws[self.location_tag][1]
-            past_pred = loose_models[self.location_tag].predict(np.arange(days[0]), group_name=self.location_tag)
+            past_pred = models[self.location_tag].predict(np.arange(days[0]), group_name=self.location_tag)
         else:
             # use overall
             model_used = 'overall'
@@ -54,7 +58,43 @@ class Drawer:
             draws = model_draws['overall'][1]
             past_pred = np.array([])
 
+        if n_draws != draws.shape[0]:
+            # if n_draws > draws.shape[0]:
+            #     raise ValueError('Specified number of draws greater than number of draws in data.')
+            # draws = resample(draws, n_draws, axis=0)
+            raise ValueError('Specified nubmer of draws different from actual number of draws.')
+
+        # expand out by peak duration of peak days
+        if self.peak_duration > 1:
+            draws = self._expand_peak(draws)
+
         return model_used, days, draws, past_pred
+
+    def _expand_peak(self, draws):
+        # daily death rate space
+        delta_draws = np.exp(draws[:,1:]) - np.exp(draws[:,:-1])
+
+        # find max of mean
+        peak_idx = np.argmax(delta_draws.mean(axis=0))
+
+        # expand that and stick into array (cutting off end to match expected length)
+        peak = np.repeat(delta_draws[:,[peak_idx]], self.peak_duration, axis=1)
+        if peak_idx == 0:
+            delta_draws = np.hstack([peak,
+                                     delta_draws[:,1:-(self.peak_duration-1)]])
+        else:
+            delta_draws = np.hstack([delta_draws[:,:peak_idx],
+                                     peak,
+                                     delta_draws[:,peak_idx+1:-(self.peak_duration-1)]])
+
+        # stick back on first obs, get cumulative, and convert back into log
+        draws = np.log(
+            np.hstack(
+                [np.exp(draws[:,[0]]), delta_draws]
+            ).cumsum(axis=1)
+        )
+
+        return draws
 
     def _get_dated_df(self, days, draws, past_pred):
         # apply dates to draws
@@ -141,8 +181,8 @@ class Drawer:
     def get_dated_draws(self):
         ensemble_draws = []
         ensemble_past = []
-        for ensemble_dir in self.ensemble_dirs:
-            model_used, days, draws, past_pred = self._collect_draws(ensemble_dir)
+        for ensemble_dir, n_draws in zip(self.ensemble_dirs, self.n_draws_list):
+            model_used, days, draws, past_pred = self._collect_draws(ensemble_dir, n_draws)
             ensemble_draws.append(draws)
             ensemble_past.append(past_pred)
         draws = np.vstack(ensemble_draws)
