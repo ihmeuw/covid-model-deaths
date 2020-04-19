@@ -20,6 +20,8 @@ if __name__ == "__main__":
         'dill',
         'pandas',
         'xlrd',
+        'loguru',
+        'pyyaml',
         'pyarrow',
         'openpyxl',
         'numpy',

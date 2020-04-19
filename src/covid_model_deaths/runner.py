@@ -4,18 +4,21 @@ import multiprocessing
 import os
 from pathlib import Path
 import shutil
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from db_queries import get_location_metadata
+from loguru import logger
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
+import yaml
 
+import covid_model_deaths
 from covid_model_deaths.compare_moving_average import CompareAveragingModelDeaths
 from covid_model_deaths.data import get_input_data, plot_crude_rates, DeathModelData
 from covid_model_deaths.drawer import Drawer
-from covid_model_deaths.impute_death_threshold import impute_death_threshold
+from covid_model_deaths.impute_death_threshold import impute_death_threshold as impute_death_threshold_
 import covid_model_deaths.globals as cmd_globals
 from covid_model_deaths.globals import COLUMNS, LOCATIONS
 from covid_model_deaths.moving_average import moving_average_predictions
@@ -23,8 +26,51 @@ from covid_model_deaths.social_distancing_cov import SocialDistCov
 from covid_model_deaths.utilities import submit_curvefit, CompareModelDeaths
 
 
-def run_us_model(input_data_version: str, peak_file: str, output_path: str, datestamp_label: str,
-                 yesterday_draw_path: str, before_yesterday_draw_path: str, previous_average_draw_path: str) -> None:
+class Checkpoint:
+
+    def __init__(self, output_dir: str):
+        self.checkpoint_dir = Path(output_dir) / 'checkpoint'
+        self.checkpoint_dir.mkdir(exist_ok=True, mode=775)
+        self.cache = {}
+
+    def write(self, key, data):
+        if key in self.cache:
+            logger.warning(f"Overwriting {key} in checkpoint data.")
+        self.cache[key] = data
+        if isinstance(data, pd.DataFrame):
+            data.to_hdf(self.checkpoint_dir / f'{key}.hdf', key='data')
+        else:
+            with (self.checkpoint_dir / f'{key}.yaml').open('w') as key_file:
+                yaml.dump(data, key_file)
+
+    def load(self, key):
+        if key in self.cache:
+            logger.info(f'Loading {key} from in memory cache.')
+        elif (self.checkpoint_dir / f'{key}.hdf').exists():
+            logger.info(f'Reading {key} from checkpoint dir {self.checkpoint_dir}.')
+            self.cache[key] = pd.read_hdf(self.checkpoint_dir / f'{key}.hdf')
+        elif (self.checkpoint_dir / f'{key}.yaml').exists():
+            logger.info(f'Reading {key} from checkpoint dir {self.checkpoint_dir}.')
+            with (self.checkpoint_dir / f'{key}.yaml').open() as key_file:
+                self.cache[key] = yaml.full_load(key_file)
+        else:
+            raise ValueError(f'No checkpoint data found for {key}')
+        return self.cache[key]
+
+    def __repr__(self):
+        return f'Checkpoint({str(self.checkpoint_dir)})'
+
+
+def run_us_model(input_data_version: str,
+                 peak_file: str,
+                 cases_deaths_file: str,
+                 r0_file: str,
+                 output_path: str,
+                 datestamp_label: str,
+                 r0_locs: List[int],
+                 yesterday_draw_path: str,
+                 before_yesterday_draw_path: str,
+                 previous_average_draw_path: str) -> None:
     full_df = get_input_data('full_data', input_data_version)
     death_df = get_input_data('deaths', input_data_version)
     age_pop_df = get_input_data('age_pop', input_data_version)
@@ -46,26 +92,32 @@ def run_us_model(input_data_version: str, peak_file: str, output_path: str, date
     state_level = ~cases_and_backcast_deaths[COLUMNS.state].isnull()
     us_states = cases_and_backcast_deaths.loc[in_us & state_level, COLUMNS.state].unique().to_list()
 
-    us_threshold_dates = impute_death_threshold(cases_and_backcast_deaths,
-                                                location_list=us_states,
-                                                ln_death_rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
+    us_threshold_dates = impute_death_threshold(cases_and_backcast_deaths, location_list=us_states)
     us_threshold_dates.to_csv(threshold_dates_output_path, index=False)
 
     us_date_mean_df = make_date_mean_df(us_threshold_dates)
 
-    us_location_ids, us_location_names = get_us_location_ids_and_names(full_df)
-    ensemble_dirs = setup_ensemble_dirs(output_path)
+    last_day_df = make_last_day_df(full_df, us_date_mean_df)
+    cases_deaths_df = pd.read_csv(cases_deaths_file)
+    cases_deaths_df[COLUMNS.date] = pd.to_datetime(cases_deaths_df[COLUMNS.date])
 
-    submit_models(death_df, age_pop_df, age_death_df, us_date_mean_df,
-                  us_location_ids, us_location_names, peak_file, output_path)
+    us_location_ids, us_location_names = get_us_location_ids_and_names(full_df)
+
+    submodel_dict = submit_models(full_df, death_df, age_pop_df, age_death_df, us_date_mean_df, cases_deaths_df,
+                                  us_location_ids, us_location_names, r0_locs,
+                                  peak_file, output_path, input_data_version, r0_file,
+                                  str(Path(covid_model_deaths.__file__).parent))
 
     in_us = full_df[COLUMNS.country] == LOCATIONS.usa.name
     state_level = ~full_df[COLUMNS.state].isnull()
     usa_obs_df = full_df[in_us & state_level]
 
-    draw_dfs, past_draw_dfs, models_used, days, ensemble_draws_dfs = compile_draws(us_location_ids, us_location_names,
-                                                                                   ensemble_dirs, usa_obs_df,
-                                                                                   us_threshold_dates, age_pop_df)
+    draw_dfs, past_draw_dfs, models_used, days, ensemble_draws_dfs = compile_draws(us_location_ids,
+                                                                                   us_location_names,
+                                                                                   submodel_dict,
+                                                                                   usa_obs_df,
+                                                                                   us_threshold_dates,
+                                                                                   age_pop_df)
     if 'location' not in models_used:
         raise ValueError('No location-specific draws used, must be using wrong tag')
 
@@ -82,10 +134,6 @@ def run_us_model(input_data_version: str, peak_file: str, output_path: str, date
 
     average_draw_df = average_draws(output_path, yesterday_draw_path, before_yesterday_draw_path)
     average_draw_df.to_csv(average_draw_path)
-
-    # NO NEED TO DO THIS, FOR NOW
-    # past_draw_df = pd.concat(past_draw_dfs)
-    # avg_df = get_peak_date(past_draw_df, avg_df)
 
     moving_average_path = make_and_save_compare_average_plots(output_path, raw_draw_path, average_draw_path,
                                                               yesterday_draw_path, before_yesterday_draw_path)
@@ -113,6 +161,16 @@ def make_cases_and_backcast_deaths(full_df: pd.DataFrame, death_df: pd.DataFrame
     return cases_and_backcast_deaths
 
 
+def impute_death_threshold(cases_and_backcast_deaths_df: pd.DataFrame, location_list: List[str]) -> pd.DataFrame:
+    threshold_dates = impute_death_threshold_(cases_and_backcast_deaths_df,
+                                              location_list=location_list,
+                                              ln_death_rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
+    loc_df = cases_and_backcast_deaths_df[[COLUMNS.location_id, COLUMNS.state]].drop_duplicates()
+    loc_df = loc_df.rename(index=str, columns={COLUMNS.state: COLUMNS.location_bad})
+    threshold_dates = loc_df.merge(threshold_dates)
+    return threshold_dates
+
+
 def make_date_mean_df(threshold_dates: pd.DataFrame) -> pd.DataFrame:
     # get mean data from dataset
     date_draws = [i for i in threshold_dates.columns if i.startswith('death_date_draw_')]
@@ -127,15 +185,30 @@ def make_date_mean_df(threshold_dates: pd.DataFrame) -> pd.DataFrame:
     return date_mean_df
 
 
-def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
-                  age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame,
-                  location_ids: List[int], location_names: List[str],
-                  peak_file: str, output_directory: str) -> None:
-    # submit models
-    n_scenarios = len(cmd_globals.COV_SETTINGS) * len(cmd_globals.KS)
-    n_draws = [int(1000 / n_scenarios)] * n_scenarios
-    n_draws[-1] = n_draws[-1] + 1000 - np.sum(n_draws)
+def make_last_day_df(full_df: pd.DataFrame, date_mean_df: pd.DataFrame) -> pd.DataFrame:
+    # prepare last day dataset
+    last_day_df = full_df.copy()
+    last_day_df[COLUMNS.last_day] = (last_day_df
+                                     .groupby(COLUMNS.location_id, as_index=False)[COLUMNS.date]
+                                     .transform(max))
+    last_day_df = last_day_df.loc[last_day_df[COLUMNS.date] == last_day_df[COLUMNS.last_day]].reset_index(drop=True)
+    last_day_df[COLUMNS.location_id] = last_day_df[COLUMNS.location_id].astype(int)
+    # TODO: Document whatever is happening here.
+    last_day_df.loc[last_day_df[COLUMNS.death_rate] == 0, COLUMNS.death_rate] = 0.1 / last_day_df[COLUMNS.population]
+    last_day_df[COLUMNS.ln_death_rate] = np.log(last_day_df[COLUMNS.death_rate])
+    last_day_df = last_day_df[[COLUMNS.location_id, COLUMNS.ln_death_rate, COLUMNS.date]].merge(date_mean_df)
+    last_day_df[COLUMNS.days] = (last_day_df[COLUMNS.date] - last_day_df[COLUMNS.threshold_date])
+    last_day_df[COLUMNS.days] = last_day_df[COLUMNS.days].apply(lambda x: x.days)
+    last_day_df = last_day_df.loc[last_day_df[COLUMNS.days] > 0]
+    return last_day_df
 
+
+def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
+                  age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, case_deaths_df: pd.DataFrame,
+                  location_ids: List[int], location_names: List[str], r0_locs: List[int],
+                  peak_file: str, output_directory: str, data_version: str, r0_file: str,
+                  code_dir: str) -> Dict:
+    submodel_dict = {}
     N = len(location_ids)
     i = 0
     nursing_home_locations = [LOCATIONS.life_care.name]
@@ -151,31 +224,89 @@ def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
             # save only others
             mod_df = mod.df.loc[~mod.df[COLUMNS.location].isin(nursing_home_locations)].reset_index(drop=True)
         mod_df = mod_df.loc[~(mod_df[COLUMNS.deaths].isnull())].reset_index(drop=True)
+
+        # flag as true data
+        mod_df[COLUMNS.pseudo] = 0
+
+        # tack on deaths from cases if in dataset
+        # South Dakota, Iowa
+        if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538]:
+            # get future days
+            last_date = full_df.loc[full_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
+            loc_cd_df = case_deaths_df.loc[(case_deaths_df[COLUMNS.location_id] == location_id)
+                                           & (case_deaths_df[COLUMNS.date] > last_date)].reset_index(drop=True)
+            loc_cd_df[COLUMNS.population] = full_df.loc[full_df[COLUMNS.location_id] == location_id,
+                                                        COLUMNS.population].max()  # all the same...
+            loc_cd_df[COLUMNS.pseudo] = 1
+
+            # convert to days
+            if location_id in mod_df[COLUMNS.location_id].tolist():
+                last_day = mod_df.loc[mod_df[COLUMNS.location_id] == location_id, COLUMNS.days].max()
+                loc_cd_df[COLUMNS.days] = last_day + 1 + loc_cd_df.index
+            else:
+                threshold = date_mean_df.loc[date_mean_df[COLUMNS.location_id] == location_id,
+                                             COLUMNS.threshold_date].item()
+                loc_cd_df[COLUMNS.days] = loc_cd_df[COLUMNS.date].apply(lambda x: (x - threshold).days)
+            loc_cd_df = loc_cd_df.loc[loc_cd_df[COLUMNS.days] >= 0]
+
+            # stick on to dataset
+            mod_df = mod_df.append(loc_cd_df)
+            mod_df = mod_df.sort_values([COLUMNS.location_id, COLUMNS.days]).reset_index(drop=True)
+
+        # figure out which models we are running (will need to check about R0=1 model)
+        submodels = cmd_globals.MOBILITY_SOURCES.copy()
+        if location_id in r0_locs:
+            submodels += ['R0_35', 'R0_50', 'R0_65']
+        submodel_dirs = setup_submodel_dirs(output_directory, cmd_globals.MOBILITY_SOURCES)
+
+        n_draws_list = get_draw_list(n_scenarios=len(submodel_dirs))
+
+        # store this information
+        submodel_dict.update({
+            int(location_id): {
+                'submodel_dirs': submodel_dirs,
+                'n_draws_list': n_draws_list
+            }
+        })
+
         n_i = 0
-        for cov_sort, weights in cmd_globals.COV_SETTINGS:
+        for cov_source in submodels:
+            if cov_source in cmd_globals.MOBILITY_SOURCES:
+                covariate_effect = 'gamma'
+            else:
+                covariate_effect = 'beta'
             for k in cmd_globals.KS:
                 # drop back-cast for modeling file, but NOT for the social distancing covariate step
-                model_out_dir = f'{output_directory}/model_data_{cov_sort}_{k}'
+                model_out_dir = f'{output_directory}/model_data_{cov_source}_{k}'
                 mod_df.to_csv(f'{model_out_dir}/{location_name}.csv', index=False)
-                sd_cov = SocialDistCov(mod_df, date_mean_df)
-                sd_cov_df = sd_cov.get_cov_df(weights=weights, k=k)
+                sd_cov = SocialDistCov(mod_df, date_mean_df, data_version=data_version)
+                if cov_source in cmd_globals.MOBILITY_SOURCES:
+                    sd_cov_df = sd_cov.get_cov_df(weights=[None], k=k, empirical_weight_source=cov_source)
+                else:
+                    sd_cov_df = sd_cov.get_cov_df(weights=[None], k=k, empirical_weight_source=cov_source,
+                                                  R0_file=r0_file)
                 sd_cov_df.to_csv(f'{model_out_dir}/{location_name} covariate.csv', index=False)
                 if not os.path.exists(f'{model_out_dir}/{location_name}'):
                     os.mkdir(f'{model_out_dir}/{location_name}')
 
-                submit_curvefit(job_name=f'curve_model_{location_id}_{cov_sort}_{k}',
+                submit_curvefit(job_name=f'curve_model_{location_id}_{cov_source}_{k}',
                                 location_id=location_id,
+                                code_dir=code_dir,
                                 model_location=location_name,
                                 model_location_id=location_id,
-                                python=shutil.which('python'),
                                 data_file=f'{model_out_dir}/{location_name}.csv',
                                 cov_file=f'{model_out_dir}/{location_name} covariate.csv',
-                                peaked_file=f'{peak_file}.csv',
+                                last_day_file=f'{output_directory}/last_day.csv',
+                                peaked_file=peak_file,
                                 output_dir=f'{model_out_dir}/{location_name}',
-                                n_draws=n_draws[n_i])
+                                covariate_effect=covariate_effect,
+                                n_draws=n_draws_list[n_i],
+                                python=shutil.which('python'))
+                n_i += 1
+    return submodel_dict
 
 
-def compile_draws(location_ids: List[int], location_names: List[str], ensemble_dirs: List[str],
+def compile_draws(location_ids: List[int], location_names: List[str], submodel_dict: Dict,
                   obs_df: pd.DataFrame, threshold_dates: pd.DataFrame, age_pop_df: pd.DataFrame
                   ) -> Tuple[List[pd.DataFrame], List[pd.DataFrame], List, List, List[pd.DataFrame]]:
     draw_dfs = []
@@ -184,12 +315,24 @@ def compile_draws(location_ids: List[int], location_names: List[str], ensemble_d
     days_ = []
     ensemble_draws_dfs = []
     for location_id, location_name in zip(location_ids, location_names):
+        # # identify peak duration
+        # if int(location_id) in peak_dur_df['location_id'].to_list():
+        #     print(f'{location_name}: observed peak')
+        #     peak_duration = peak_dur_df.loc[peak_dur_df['location_id'] == int(location_id), 'peak durations'].item()
+        # else:
+        #     print(f'{location_name}: average peak')
+        #     peak_duration = 5
+        # peak_duration = int(np.round(peak_duration))
+        # print(f'Peak length: {peak_duration}')
+        peak_duration = 1
         # get draws
         data_draws = Drawer(
-            ensemble_dirs=ensemble_dirs,
+            ensemble_dirs=submodel_dict[int(location_id)]['submodel_dirs'],
+            n_draws_list=submodel_dict[int(location_id)]['n_draws_list'],
             location_name=location_name,
             location_id=int(location_id),
-            obs_df=obs_df.loc[obs_df[COLUMNS.state] == location_name],
+            peak_duration=peak_duration,
+            obs_df=obs_df.loc[obs_df[COLUMNS.location_id] == location_id],
             date_draws=threshold_dates.loc[threshold_dates[COLUMNS.location_bad] == location_name,
                                            [i for i in threshold_dates.columns if i.startswith('death_date_draw_')]].values,
             population=age_pop_df.loc[age_pop_df[COLUMNS.location_id] == int(location_id), COLUMNS.population].sum()
@@ -203,10 +346,10 @@ def compile_draws(location_ids: List[int], location_names: List[str], ensemble_d
     return draw_dfs, past_draw_dfs, models_used, days_, ensemble_draws_dfs
 
 
-def average_draws(output_dir: str, yesterday_path: str, before_yesterday_path: str) -> pd.DataFrame:
-    raw_draw_path = f'{output_dir}/state_data.csv'
+def average_draws(output_dir: str, label: str, raw_draw_path: str,
+                  yesterday_path: str, before_yesterday_path: str) -> pd.DataFrame:
     avg_df = moving_average_predictions(
-        'US',
+        label,
         specified=True,
         model_1=raw_draw_path,
         model_2=yesterday_path,
@@ -217,13 +360,17 @@ def average_draws(output_dir: str, yesterday_path: str, before_yesterday_path: s
 
 
 def make_and_save_draw_plots(output_dir: str, location_ids: List[int], location_names: List[str],
-                             ensemble_draw_dfs: List[pd.DataFrame], days_: List, models_used: List) -> str:
+                             ensemble_draw_dfs: List[Dict[str, pd.DataFrame]], days_: List, models_used: List,
+                             age_pop_df: pd.DataFrame) -> str:
     # plot ensemble
     # ensemble plot settings
     color_dict = {
-        'equal': 'gold',
-        'ascmid': 'firebrick',
-        'ascmax': 'darkviolet'
+        'safegraph': 'dodgerblue',
+        'google': 'forestgreen',
+        'descartes': 'firebrick',
+        # 'R0_35':'gold',
+        # 'R0_50':'darkgrey',
+        # 'R0_65':'darkviolet'
     }
     line_dict = {
         '21': '--'
@@ -237,7 +384,7 @@ def make_and_save_draw_plots(output_dir: str, location_ids: List[int], location_
             fig, ax = plt.subplots(1, 2, figsize=(11, 8.5))
             for label, draws in ensemble_draws.items():
                 label = label.split('model_data_')[1]
-                draws = np.exp(draws)
+                draws = np.exp(draws) * age_pop_df.loc[age_pop_df[COLUMNS.location_id] == int(location_id), COLUMNS.population].sum()
                 deaths_mean = draws.mean(axis=0)
                 deaths_lower = np.percentile(draws, 2.5, axis=0)
                 deaths_upper = np.percentile(draws, 97.5, axis=0)
@@ -249,25 +396,24 @@ def make_and_save_draw_plots(output_dir: str, location_ids: List[int], location_
                 # cumulative
                 ax[0].fill_between(days,
                                    deaths_lower, deaths_upper,
-                                   color=color_dict[label.split('_')[0]],
-                                   linestyle=line_dict[label.split('_')[1]],
+                                   color=color_dict['_'.join(label.split('_')[:-1])],
+                                   linestyle=line_dict[label.split('_')[-1]],
                                    alpha=0.25)
                 ax[0].plot(days, deaths_mean,
-                           c=color_dict[label.split('_')[0]],
-                           linestyle=line_dict[label.split('_')[1]], )
-                ax[0].set_title(f'constant: {k}')
+                           c=color_dict['_'.join(label.split('_')[:-1])],
+                           linestyle=line_dict[label.split('_')[-1]])
                 ax[0].set_xlabel('Date')
                 ax[0].set_ylabel('Cumulative death rate')
 
                 # daily
                 ax[1].fill_between(days[1:],
                                    d_deaths_lower, d_deaths_upper,
-                                   color=color_dict[label.split('_')[0]],
-                                   linestyle=line_dict[label.split('_')[1]],
+                                   color=color_dict['_'.join(label.split('_')[:-1])],
+                                   linestyle=line_dict[label.split('_')[-1]],
                                    alpha=0.25)
                 ax[1].plot(days[1:], d_deaths_mean,
-                           c=color_dict[label.split('_')[0]],
-                           linestyle=line_dict[label.split('_')[1]],
+                           c=color_dict['_'.join(label.split('_')[:-1])],
+                           linestyle=line_dict[label.split('_')[-1]],
                            label=label.replace('model_data_', ''))
                 ax[1].set_xlabel('Date')
                 ax[1].set_ylabel('Daily death rates')
@@ -280,7 +426,7 @@ def make_and_save_draw_plots(output_dir: str, location_ids: List[int], location_
 
 
 def make_and_save_compare_average_plots(output_dir: str, raw_draw_path: str, average_draw_path: str,
-                                        yesterday_draw_path: str, before_yesterday_draw_path: str) -> str:
+                                        yesterday_draw_path: str, before_yesterday_draw_path: str, label: str) -> str:
     plotter = CompareAveragingModelDeaths(
         raw_draw_path=raw_draw_path,
         average_draw_path=average_draw_path,
@@ -288,7 +434,7 @@ def make_and_save_compare_average_plots(output_dir: str, raw_draw_path: str, ave
         before_yesterday_draw_path=before_yesterday_draw_path
     )
     plot_path = f'{output_dir}/moving_average_compare.pdf'
-    plotter.make_some_pictures(plot_path, 'United States of America')
+    plotter.make_some_pictures(plot_path, label)
     return plot_path
 
 
@@ -303,13 +449,14 @@ def make_and_save_compare_to_previous_plots(output_dir: str, today_average_path:
     return plot_path
 
 
-def send_plots_to_diagnostics(datestamp_label: str, *plot_paths: str) -> None:
+def send_plots_to_diagnostics(datestamp_label: str, *plot_paths: str) -> str:
     viz_dir = Path(f'/home/j/Project/covid/results/diagnostics/deaths/{datestamp_label}/')
     if not os.path.exists(viz_dir):
         os.mkdir(viz_dir)
     for plot_path in plot_paths:
         plot_path = Path(plot_path)
         shutil.copyfile(src=plot_path, dst=viz_dir / plot_path.name)
+    return str(viz_dir)
 
 
 def get_location_ids(data: pd.DataFrame) -> List[int]:
@@ -369,7 +516,7 @@ def backcast_deaths(location_id: int, death_df: pd.DataFrame,
         mod_df.loc[mod_df[COLUMNS.days] == 0, COLUMNS.date] = date0 - timedelta(days=np.round(day0))
         mod_df = mod_df.loc[~((mod_df[COLUMNS.deaths].isnull()) & (mod_df[COLUMNS.date] == date0))]
         mod_df = mod_df.loc[~mod_df[COLUMNS.date].isnull()]
-        mod_df.loc[mod_df[COLUMNS.death_rate].isnull(), COLUMNS.death_rate] = np.exp(mod_df[COLUMNS.ln_death_rate])
+        mod_df.loc[mod_df[COLUMNS.death_rate].isnull(), COLUMNS.death_rate] = np.exp(mod_df[COLUMNS.ln_age_death_rate])
         mod_df.loc[mod_df[COLUMNS.deaths].isnull(), COLUMNS.deaths] = mod_df[COLUMNS.death_rate] * mod_df[COLUMNS.population]
         mod_df = mod_df.rename(index=str, columns={COLUMNS.location: COLUMNS.state})
     else:
@@ -384,13 +531,30 @@ def date_mean(dates: pd.Series) -> datetime:
     return dt_min + sum(deltas) / len(deltas)
 
 
-def setup_ensemble_dirs(output_directory: str) -> List[str]:
+def get_draw_list(n_scenarios):
+    n_draws_list = [int(1000 / n_scenarios)] * n_scenarios
+    n_draws_list[-1] = n_draws_list[-1] + 1000 - np.sum(n_draws_list)
+
+    return n_draws_list
+
+
+def setup_submodel_dirs(output_directory: str, model_labels: List[str]) -> List[str]:
     model_out_dirs = []
-    for cov_sort, weights in cmd_globals.COV_SETTINGS:
+    for model_label in model_labels:
         for k in cmd_globals.KS:
             # set up dirs
-            model_out_dir = Path(f'{output_directory}/model_data_{cov_sort}_{k}')
+            model_out_dir = Path(f'{output_directory}/model_data_{model_label}_{k}')
             if not model_out_dir.exists():
                 model_out_dir.mkdir(mode=775)
             model_out_dirs.append(str(model_out_dir))
     return model_out_dirs
+
+
+def display_total_deaths(draw_df: pd.DataFrame):
+    draw_cols = [f'draw_{i}' for i in range(1000)]
+    nat_df = draw_df.groupby('date', as_index=False)[draw_cols].sum()
+    nat_df = nat_df.loc[nat_df['date'] == pd.Timestamp('2020-07-15')]
+    deaths_mean = int(nat_df[draw_cols].mean(axis=1).item())
+    deaths_lower = int(np.percentile(nat_df[draw_cols], 2.5, axis=1).item())
+    deaths_upper = int(np.percentile(nat_df[draw_cols], 97.5, axis=1).item())
+    print(f'{deaths_mean:,} ({deaths_lower:,} - {deaths_upper:,})')
