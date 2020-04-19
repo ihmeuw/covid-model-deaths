@@ -579,9 +579,12 @@ def run_death_models():
     # try setting floor for covariate
     cov_df.loc[cov_df[COVARIATE] < 0.25, COVARIATE] = 0.25
 
+    # encode location_id so we don't end up w/ indexing issues
+    df['location_id'] = '_' + df['location_id'].astype(str)
+
     # attach covs to data file -- should check if scenario run is necessary for location, so
     # as not to be wasteful...
-    df = pd.merge(df, cov_df[['location_id', COVARIATE]], how='left')
+    df = pd.merge(df, cov_df[['Location', COVARIATE]], how='left')
     if df[COVARIATE].isnull().any():
         missing_locs = df.loc[df[COVARIATE].isnull(), 'Location'].unique().tolist()
         #raise ValueError(f'The following locations are missing covariates: {", ".join(missing_locs)}')
@@ -589,9 +592,6 @@ def run_death_models():
         df = df.loc[~df[COVARIATE].isnull()]
     df = df.sort_values(['location_id', 'Days']).reset_index(drop=True)  # 'Country/Region',
 
-    # encode location_id so we don't end up w/ indexing issues
-    df['location_id'] = '_' + df['location_id'].astype(str)
-    
     # add intercept
     df['intercept'] = 1.0
 

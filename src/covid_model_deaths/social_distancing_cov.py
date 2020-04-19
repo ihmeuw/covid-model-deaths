@@ -62,10 +62,7 @@ class SocialDistCov:
         df.loc[df['Country/Region'].isnull(), 'Country/Region'] = df['Location']
         df.loc[df['Country/Region'] == 'USA', 'Country/Region'] = 'United States of America'
         df = df.loc[~(df['Location'].isnull()) & ~(df['Country/Region'].isnull())]
-        
-        # Forcing Wuhan to match dummy location_id from dataset
-        df.loc[df['Location'] == 'Wuhan City, Hubei', 'location_id'] = -503002
-        df = df[['location_id'] + self.closure_cols]
+        df = df[['Location', 'Country/Region'] + self.closure_cols]
 
         # convert datetime column
         for date_col in self.closure_cols:
@@ -84,10 +81,9 @@ class SocialDistCov:
                             .transform('min'))
         df = df.loc[df['Date'] == df['first_date']]
         df['threshold_date'] = df.apply(lambda x: x['Date'] - timedelta(days=np.round(x['Days'])), axis=1)
-        
+
         # tack on mean date data
-        df = df[['location_id', 'Location', 'Country/Region', 'threshold_date']].reset_index(drop=True)  
-        
+        df = df[['location_id', 'Location', 'Country/Region', 'threshold_date']].reset_index(drop=True)
         if date_df is not None:
             df = df.append(
                 date_df.loc[~date_df['Location'].isin(df['Location'].unique().tolist()),
@@ -177,7 +173,7 @@ class SocialDistCov:
         df['composite_2w'] = np.nan
         df['composite_3w'] = (df[list(code_map.keys())] * np.array(list(weight_dict.values()))).sum(axis=1)
 
-        return df[['location_id', 'Location', 'Country/Region', 'threshold_date']
+        return df[['Location', 'Country/Region', 'threshold_date']
                           + list(code_map.keys())
                           + ['composite_1w', 'composite_2w', 'composite_3w']]
 
