@@ -378,6 +378,14 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     #     n_b = 13
     # print(f'basis functions: {n_b}')
     n_b = 13
+    
+    # set bounds on Gaussian mixture weights
+    gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
+    gm_bounds[-1] = [0.18, 4.]
+    gm_bounds = np.vstack([gm_bounds, [[0, np.inf]]])  # add bounds on sum of weights
+    gm_fit_dict = {
+        'bounds': gm_bounds
+    }
 
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
@@ -388,6 +396,7 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
         mixture_size=n_b,
         daily_col='asddr',
         gm_fit_threshold=DATA_THRESHOLD,
+        gm_fit_dict=gm_fit_dict,
         all_data=df,
         **model_info_dict,
         joint_model_fit_dict=basic_joint_model_fit_dict,
@@ -516,21 +525,17 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 def run_death_models():
     """
     args = argparse.Namespace(
-        model_location='South Dakota',
-        model_location_id=564,
-        data_file='/ihme/covid-19/deaths/prod/2020_04_15_US_dcr/model_data_google_21/South Dakota.csv',
-        cov_file='/ihme/covid-19/deaths/prod/2020_04_15_US_dcr/model_data_google_21/South Dakota covariate.csv',
-        last_day_file='/ihme/covid-19/deaths/prod/2020_04_15_US_dcr/last_day.csv',
+        model_location_id=4750,
+        data_file='/ihme/covid-19/deaths/dev/2020_04_18_Europe/model_data_google_21/Acre.csv',
+        cov_file='/ihme/covid-19/deaths/dev/2020_04_18_Europe/model_data_google_21/Acre covariate.csv',
+        last_day_file='/ihme/covid-19/deaths/dev/2020_04_18_Europe/last_day.csv',
         peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_14/final_peak_locs_04_14.csv',
-        output_dir='/ihme/covid-19/deaths/prod/2020_04_15_US_dcr/model_data_google_21/South Dakota',
+        output_dir='/ihme/covid-19/deaths/dev/2020_04_18_Europe/model_data_google_21/Acre',
         covariate_effect='gamma',
         n_draws=333
     )
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--model_location', help='Name of location to which we are standardizing.', type=str
-    )
     parser.add_argument(
         '--model_location_id', help='id of location to which we are standardizing.', type=int
     )
@@ -564,18 +569,17 @@ def run_death_models():
     # try setting floor for covariate
     cov_df.loc[cov_df[COVARIATE] < 0.25, COVARIATE] = 0.25
 
-    # encode location_id so we don't end up w/ indexing issues
-    df['location_id'] = '_' + df['location_id'].astype(str)
-
-    # attach covs to data file -- should check if scenario run is necessary
-    # for location, so as not to be wasteful...
-    df = pd.merge(df, cov_df[['Location', COVARIATE]], how='left')
+    # attach covs to data file
+    df = pd.merge(df, cov_df[['location_id', COVARIATE]], how='left')
     if df[COVARIATE].isnull().any():
         missing_locs = df.loc[df[COVARIATE].isnull(), 'Location'].unique().tolist()
         print(f'The following locations are missing covariates: {", ".join(missing_locs)}')
         df = df.loc[~df[COVARIATE].isnull()]
     df = df.sort_values(['location_id', 'Days']).reset_index(drop=True)  # 'Country/Region',
 
+    # encode location_id for more explicit str indexing in model
+    df['location_id'] = '_' + df['location_id'].astype(str)
+    
     # add intercept
     df['intercept'] = 1.0
 
@@ -602,7 +606,7 @@ def run_death_models():
         fix_day = last_day_df['Days'].item()
 
     ## run models
-    model_seed = get_hash(args.model_location)
+    model_seed = get_hash(f'_{args.model_location_id}')
     np.random.seed(model_seed)
     # AP model for data poor
     if len(df.loc[df['location_id'] == f'_{args.model_location_id}']) < DATA_THRESHOLD:
@@ -652,7 +656,7 @@ def run_death_models():
 
     # store outputs
     # data
-    df.to_csv(f'{args.output_dir}/data.csv', index=False)
+    df[['location_id', 'intercept', 'Days', 'pseudo', 'ln(age-standardized death rate)', COVARIATE]].to_csv(f'{args.output_dir}/data.csv', index=False)
     # loose
     if model == 'AP':
         with open(f'{args.output_dir}/loose_models.pkl', 'wb') as fwrite:

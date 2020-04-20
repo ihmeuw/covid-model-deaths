@@ -34,7 +34,7 @@ class _Locations(NamedTuple):
 
 
 
-LOCATIONS = _Locations
+LOCATIONS = _Locations()
 
 
 class _Columns(NamedTuple):

@@ -128,13 +128,10 @@ class DeathModelData:
         # restrict subnat if needed
         if subnat:
             # this logic should be sound...?
-            print('Only using admin1 and below locations')
             df = df.loc[df['Location'] != df['Country/Region']].reset_index(drop=True)
 
-        print('Dropping Outside Wuhan City, Hubei')
         df = df.loc[df['Location'] != 'Outside Wuhan City, Hubei'].reset_index(drop=True)
 
-        print('Dropping Outside Hubei')
         df = df.loc[df['Location'] != 'Outside Hubei'].reset_index(drop=True)
 
         # make sure we don't have naming problem
@@ -161,7 +158,6 @@ class DeathModelData:
         df = df.merge(implied_df)
 
         # age-standardize
-        print(f'Standardizing to population of {standardize_location_id}')
         df['Age-standardized death rate'] = df.apply(
             lambda x: self.get_asdr(
                 x['Death rate'],
@@ -253,7 +249,6 @@ class DeathModelData:
         delta_df = (delta_df
                     .groupby(['location_id', 'Country/Region', 'Location'], as_index=False)['Delta ln(asdr)']
                     .mean())
-        print('Fix backcasting if we change nursing home observations (drop by name).')
         delta_df = delta_df.loc[(delta_df['Delta ln(asdr)'] > 1e-4) &
                                 (~delta_df['Location'].isin(['Life Care Center, Kirkland, WA']))]
         bc_location_ids = delta_df['location_id'].to_list()

@@ -7,11 +7,13 @@ import shutil
 from typing import Dict, List, Tuple
 
 from db_queries import get_location_metadata
+import dill as pickle
 from loguru import logger
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
+import tqdm
 import yaml
 
 import covid_model_deaths
@@ -30,29 +32,23 @@ class Checkpoint:
 
     def __init__(self, output_dir: str):
         self.checkpoint_dir = Path(output_dir) / 'checkpoint'
-        self.checkpoint_dir.mkdir(exist_ok=True, mode=775)
+        self.checkpoint_dir.mkdir(mode=0o775, exist_ok=True)
         self.cache = {}
 
     def write(self, key, data):
         if key in self.cache:
             logger.warning(f"Overwriting {key} in checkpoint data.")
         self.cache[key] = data
-        if isinstance(data, pd.DataFrame):
-            data.to_hdf(self.checkpoint_dir / f'{key}.hdf', key='data')
-        else:
-            with (self.checkpoint_dir / f'{key}.yaml').open('w') as key_file:
-                yaml.dump(data, key_file)
+        with (self.checkpoint_dir / f"{key}.pkl").open('wb') as key_file:
+            pickle.dump(data, key_file, -1)
 
     def load(self, key):
         if key in self.cache:
             logger.info(f'Loading {key} from in memory cache.')
-        elif (self.checkpoint_dir / f'{key}.hdf').exists():
+        elif (self.checkpoint_dir / f'{key}.pkl').exists():
             logger.info(f'Reading {key} from checkpoint dir {self.checkpoint_dir}.')
-            self.cache[key] = pd.read_hdf(self.checkpoint_dir / f'{key}.hdf')
-        elif (self.checkpoint_dir / f'{key}.yaml').exists():
-            logger.info(f'Reading {key} from checkpoint dir {self.checkpoint_dir}.')
-            with (self.checkpoint_dir / f'{key}.yaml').open() as key_file:
-                self.cache[key] = yaml.full_load(key_file)
+            with (self.checkpoint_dir / f"{key}.pkl").open('rb') as key_file:
+                self.cache[key] = pickle.load(key_file)
         else:
             raise ValueError(f'No checkpoint data found for {key}')
         return self.cache[key]
@@ -181,7 +177,7 @@ def make_date_mean_df(threshold_dates: pd.DataFrame) -> pd.DataFrame:
     )
     date_mean_df[COLUMNS.country] = LOCATIONS.usa.name
     date_mean_df = date_mean_df.rename(index=str, columns={COLUMNS.location_bad: COLUMNS.location})
-    date_mean_df = date_mean_df[[COLUMNS.location, COLUMNS.country, COLUMNS.threshold_date]]
+    date_mean_df = date_mean_df[[COLUMNS.location_id, COLUMNS.location, COLUMNS.country, COLUMNS.threshold_date]]
     return date_mean_df
 
 
@@ -239,19 +235,20 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
                                                         COLUMNS.population].max()  # all the same...
             loc_cd_df[COLUMNS.pseudo] = 1
 
-            # convert to days
-            if location_id in mod_df[COLUMNS.location_id].tolist():
-                last_day = mod_df.loc[mod_df[COLUMNS.location_id] == location_id, COLUMNS.days].max()
-                loc_cd_df[COLUMNS.days] = last_day + 1 + loc_cd_df.index
-            else:
-                threshold = date_mean_df.loc[date_mean_df[COLUMNS.location_id] == location_id,
-                                             COLUMNS.threshold_date].item()
-                loc_cd_df[COLUMNS.days] = loc_cd_df[COLUMNS.date].apply(lambda x: (x - threshold).days)
-            loc_cd_df = loc_cd_df.loc[loc_cd_df[COLUMNS.days] >= 0]
+            if not loc_cd_df.empty:
+                # convert to days
+                if location_id in mod_df[COLUMNS.location_id].tolist():
+                    last_day = mod_df.loc[mod_df[COLUMNS.location_id] == location_id, COLUMNS.days].max()
+                    loc_cd_df[COLUMNS.days] = last_day + 1 + loc_cd_df.index
+                else:
+                    threshold = date_mean_df.loc[date_mean_df[COLUMNS.location_id] == location_id,
+                                                 COLUMNS.threshold_date].item()
+                    loc_cd_df[COLUMNS.days] = loc_cd_df[COLUMNS.date].apply(lambda x: (x - threshold).days)
+                loc_cd_df = loc_cd_df.loc[loc_cd_df[COLUMNS.days] >= 0]
 
-            # stick on to dataset
-            mod_df = mod_df.append(loc_cd_df)
-            mod_df = mod_df.sort_values([COLUMNS.location_id, COLUMNS.days]).reset_index(drop=True)
+                # stick on to dataset
+                mod_df = mod_df.append(loc_cd_df)
+                mod_df = mod_df.sort_values([COLUMNS.location_id, COLUMNS.days]).reset_index(drop=True)
 
         # figure out which models we are running (will need to check about R0=1 model)
         submodels = cmd_globals.MOBILITY_SOURCES.copy()
@@ -278,30 +275,31 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
             for k in cmd_globals.KS:
                 # drop back-cast for modeling file, but NOT for the social distancing covariate step
                 model_out_dir = f'{output_directory}/model_data_{cov_source}_{k}'
-                mod_df.to_csv(f'{model_out_dir}/{location_name}.csv', index=False)
+                mod_df.to_csv(f'{model_out_dir}/{location_id}.csv', index=False)
                 sd_cov = SocialDistCov(mod_df, date_mean_df, data_version=data_version)
                 if cov_source in cmd_globals.MOBILITY_SOURCES:
                     sd_cov_df = sd_cov.get_cov_df(weights=[None], k=k, empirical_weight_source=cov_source)
                 else:
                     sd_cov_df = sd_cov.get_cov_df(weights=[None], k=k, empirical_weight_source=cov_source,
                                                   R0_file=r0_file)
-                sd_cov_df.to_csv(f'{model_out_dir}/{location_name} covariate.csv', index=False)
-                if not os.path.exists(f'{model_out_dir}/{location_name}'):
-                    os.mkdir(f'{model_out_dir}/{location_name}')
+                sd_cov_df.to_csv(f'{model_out_dir}/{location_id}_covariate.csv', index=False)
+                if not os.path.exists(f'{model_out_dir}/{location_id}'):
+                    os.mkdir(f'{model_out_dir}/{location_id}')
 
                 submit_curvefit(job_name=f'curve_model_{location_id}_{cov_source}_{k}',
                                 location_id=location_id,
-                                code_dir=code_dir,
+                                model_file=f'{code_dir}/model.py',
                                 model_location=location_name,
                                 model_location_id=location_id,
-                                data_file=f'{model_out_dir}/{location_name}.csv',
-                                cov_file=f'{model_out_dir}/{location_name} covariate.csv',
+                                data_file=f'{model_out_dir}/{location_id}.csv',
+                                cov_file=f'{model_out_dir}/{location_id}_covariate.csv',
                                 last_day_file=f'{output_directory}/last_day.csv',
                                 peaked_file=peak_file,
-                                output_dir=f'{model_out_dir}/{location_name}',
+                                output_dir=f'{model_out_dir}/{location_id}',
                                 covariate_effect=covariate_effect,
                                 n_draws=n_draws_list[n_i],
-                                python=shutil.which('python'))
+                                python=shutil.which('python'),
+                                verbose=True)
                 n_i += 1
     return submodel_dict
 
@@ -462,7 +460,7 @@ def send_plots_to_diagnostics(datestamp_label: str, *plot_paths: str) -> str:
 def get_location_ids(data: pd.DataFrame) -> List[int]:
     rate_above_threshold = np.log(data[COLUMNS.death_rate]) > cmd_globals.LN_MORTALITY_RATE_THRESHOLD
     state_level = ~data[COLUMNS.state].isnull()
-    location_ids = sorted(data.loc[rate_above_threshold & state_level, COLUMNS.location_id].unique().to_list())
+    location_ids = sorted(data.loc[rate_above_threshold & state_level, COLUMNS.location_id].unique().tolist())
     return location_ids
 
 
@@ -488,11 +486,11 @@ def get_us_location_ids_and_names(full_df: pd.DataFrame) -> Tuple[List[int], Lis
 def backcast_deaths_parallel(location_ids: List[int], death_df: pd.DataFrame,
                              age_pop_df: pd.DataFrame, age_death: pd.DataFrame) -> pd.DataFrame:
     _combiner = functools.partial(backcast_deaths,
-                                  input_death_df=death_df,
-                                  input_age_pop_df=age_pop_df,
-                                  input_age_death_df=age_death)
+                                  death_df=death_df,
+                                  age_pop_df=age_pop_df,
+                                  age_death_df=age_death)
     with multiprocessing.Pool(20) as p:
-        backcast_deaths_dfs = p.map(_combiner, location_ids)
+        backcast_deaths_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
     return pd.concat(backcast_deaths_dfs)
 
 
@@ -527,8 +525,8 @@ def backcast_deaths(location_id: int, death_df: pd.DataFrame,
 
 def date_mean(dates: pd.Series) -> datetime:
     dt_min = dates.min()
-    deltas = [x-dt_min for x in dates]
-    return dt_min + sum(deltas) / len(deltas)
+    deltas = pd.Series([x-dt_min for x in dates])
+    return dt_min + deltas.sum() / len(deltas)
 
 
 def get_draw_list(n_scenarios):
@@ -545,7 +543,7 @@ def setup_submodel_dirs(output_directory: str, model_labels: List[str]) -> List[
             # set up dirs
             model_out_dir = Path(f'{output_directory}/model_data_{model_label}_{k}')
             if not model_out_dir.exists():
-                model_out_dir.mkdir(mode=775)
+                model_out_dir.mkdir(mode=0o775, exist_ok=True)
             model_out_dirs.append(str(model_out_dir))
     return model_out_dirs
 

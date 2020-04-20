@@ -19,6 +19,7 @@ if __name__ == "__main__":
         'ipdb',
         'dill',
         'pandas',
+        'tqdm',
         'xlrd',
         'loguru',
         'pyyaml',
