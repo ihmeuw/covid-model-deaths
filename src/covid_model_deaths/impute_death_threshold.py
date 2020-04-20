@@ -21,10 +21,11 @@ def clean_data(df):
     assert not np.any(df.death_count < 0)
     df['case_rate'] = df['Confirmed case rate']
     df['death_rate'] = df['Death rate']
-    df['location'] = df['Province/State']
-    df['country'] = df['Country/Region']
-    assert 'New York' in set(df['location'])  #Delete
-    assert 'United States of America' in set(df['country'])  #Delete
+    #df['location'] = df['Province/State']
+    #df['location'] = df['location_id']
+    #df['country'] = df['Country/Region']
+    #assert 'New York' in set(df['location'])  #Delete
+    #assert 'United States of America' in set(df['country'])  #Delete
 
     df['date'] = df['Date'].map(pd.Timestamp)
     assert df['date'].min() == pd.Timestamp('2019-12-31')
@@ -59,17 +60,17 @@ def days_from_X_cases_to_Y_deaths(df,
     
     if case_count_threshold != None:
         assert ln_case_rate_threshold == None, 'Only one case threshold should be specified'
-        day_X_cases = df[df['case_count'] >= case_count_threshold].groupby('location').date.min()
+        day_X_cases = df[df['case_count'] >= case_count_threshold].groupby('location_id').date.min()
     else:
         case_rate_threshold = np.exp(ln_case_rate_threshold)
-        day_X_cases = df[df['case_rate'] >= case_rate_threshold].groupby('location').date.min()
+        day_X_cases = df[df['case_rate'] >= case_rate_threshold].groupby('location_id').date.min()
         
     if death_count_threshold != None:
         assert ln_death_rate_threshold == None, 'Only one death threshold should be specified'
-        day_Y_deaths = df[df['death_count'] >= death_count_threshold].groupby('location').date.min()
+        day_Y_deaths = df[df['death_count'] >= death_count_threshold].groupby('location_id').date.min()
     else:
         death_rate_threshold = np.exp(ln_death_rate_threshold)
-        day_Y_deaths = df[df['death_rate'] >= death_rate_threshold].groupby('location').date.min()
+        day_Y_deaths = df[df['death_rate'] >= death_rate_threshold].groupby('location_id').date.min()
 
     wait_times = (day_Y_deaths - day_X_cases) / pd.Timedelta(days=1)
     return wait_times.dropna().sort_values()
@@ -84,12 +85,12 @@ def random_delta_days(waits):
     return pd.Timedelta(days=np.round(random_wait))
 
 
-def location_specific_death_threshold_date(df, location, ln_death_rate_threshold, collapse_neg = False):
-    results = pd.Series({'location':location})
+def location_specific_death_threshold_date(df, location_id, ln_death_rate_threshold, collapse_neg = False):
+    results = pd.Series({'location_id':location_id})
     #results['data_date'] = data_date
 
-    # find most recent case date for this location
-    df_loc = df[df.location == location].sort_values('date', ascending=False)
+    # find most recent case date for this location_id
+    df_loc = df[df.location_id == location_id].sort_values('date', ascending=False)
     results['case_date'] = df_loc.iloc[0]['date']
     results['case_count'] = df_loc.iloc[0]['case_count']
     results['population'] = df_loc.iloc[0]['population']
@@ -134,18 +135,18 @@ def impute_death_threshold(df,
     df = clean_data(df) 
 
     # step 2 - make sure location_list is ok
-    assert set(location_list).issubset(set(df['location']))
+    assert set(location_list).issubset(set(df['location_id']))
     
     
     # step 3 - run functions on df
     np.random.seed(12345)
     results = []
-    for location in location_list:
+    for location_id in location_list:
         try: 
-            result = location_specific_death_threshold_date(df, location, ln_death_rate_threshold, collapse_neg)
+            result = location_specific_death_threshold_date(df, location_id, ln_death_rate_threshold, collapse_neg)
             results.append(result)
         except Exception: 
-            print(location, " failed")
+            print(location_id, " failed")
 
     results = pd.DataFrame(results)
     
