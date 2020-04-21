@@ -68,10 +68,6 @@ class SocialDistCov:
         df = df.loc[~(df['location_id'].isnull()) & 
                     ~(df['Location'].isnull()) & 
                     ~(df['Country/Region'].isnull())]
-        #df = df[['Location', 'Country/Region'] + self.closure_cols]
-        
-        # replace Wuhan location_id until we it is updated in the ETL
-        df.loc[df['Location'] == 'Wuhan City, Hubei', 'location_id'] = -503002
         
         # just keep location_id as identifier
         df = df[['location_id'] + self.closure_cols]
@@ -267,9 +263,9 @@ class SocialDistCov:
 
         # scale to Wuhan
         if 'cov_1w' not in df.columns:
-            wuhan_score_1w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_1w'].item()
-            wuhan_score_2w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_2w'].item()
-            wuhan_score_3w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_3w'].item()
+            wuhan_score_1w = df.loc[df['Location'] == 'Wuhan', 'composite_1w'].item()
+            wuhan_score_2w = df.loc[df['Location'] == 'Wuhan', 'composite_2w'].item()
+            wuhan_score_3w = df.loc[df['Location'] == 'Wuhan', 'composite_3w'].item()
             df['cov_1w'] = (df['composite_1w'] + k) / (wuhan_score_1w + k)
             df['cov_2w'] = (df['composite_2w'] + k) / (wuhan_score_2w + k)
             df['cov_3w'] = (df['composite_3w'] + k) / (wuhan_score_3w + k)

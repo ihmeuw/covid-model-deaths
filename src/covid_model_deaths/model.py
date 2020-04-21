@@ -584,7 +584,7 @@ def run_death_models():
     df['intercept'] = 1.0
 
     # identify covariate value for our location
-    location_cov = cov_df.loc[cov_df['Location'] == args.model_location,
+    location_cov = cov_df.loc[cov_df['location_id'] == args.model_location_id,
                               COVARIATE].item()
 
     # don't let it be below 10 / 28

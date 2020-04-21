@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from seaborn import set_style
 
-from .compare_moving_average import CompareAveragingModelDeaths
+from covid_model_deaths.compare_moving_average import CompareAveragingModelDeaths
 
 set_style("whitegrid")
 COLUMNS = ['location_id', 'location', 'date', 'observed']
@@ -80,6 +80,7 @@ def average_model_outputs(lst_paths, model_1, indir, location):
         # df_prev = df_prev.loc[df_prev.observed == False]
         df_prev = get_daily_deaths(df_prev)
         lst_df_prev.append(df_prev)
+    import pdb; pdb.set_trace()
     mean_df = (pd.concat(lst_df_prev)
                .groupby(COLUMNS)
                .mean().reset_index())
@@ -117,6 +118,7 @@ def append_observed_outputs(model_1, mean_df, location):
 def moving_average_predictions(location, in_dir="/ihme/covid-19/deaths/prod",
                                specified=False, model_1=None, model_2=None, model_3=None):
     """Average the predictions for recent 3 runs."""
+    import pdb; pdb.set_trace()
     if not specified:
         lst_paths = get_previous_filepaths(in_dir, location)
     else:
@@ -161,9 +163,9 @@ def plot_moving_average(location, indir="/ihme/covid-19/deaths/prod"):
 
 if __name__ == '__main__':
     df_us = moving_average_predictions('US',
-                                       model_1='/ihme/covid-19/deaths/prod/2020_04_06_US/state_data.csv',
-                                       model_2='/ihme/covid-19/deaths/prod/2020_04_05_US/state_data.csv',
-                                       model_3='/ihme/covid-19/deaths/prod/2020_04_04_US/state_data.csv')
+                                       model_1='/ihme/covid-19/deaths/prod/2020_04_16_US/state_data.csv',
+                                       model_2='/ihme/covid-19/deaths/prod/2020_04_17_US/state_data.csv',
+                                       model_3='/ihme/covid-19/deaths/prod/2020_04_19_US/state_data.csv')
     df_us.to_csv('/ihme/covid-19/deaths/prod/2020_04_06_US_test/past_avg_state_data.csv', index=False)
 
     plot_moving_average('US')

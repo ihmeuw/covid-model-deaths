@@ -289,7 +289,6 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
                 submit_curvefit(job_name=f'curve_model_{location_id}_{cov_source}_{k}',
                                 location_id=location_id,
                                 model_file=f'{code_dir}/model.py',
-                                model_location=location_name,
                                 model_location_id=location_id,
                                 data_file=f'{model_out_dir}/{location_id}.csv',
                                 cov_file=f'{model_out_dir}/{location_id}_covariate.csv',
