@@ -69,7 +69,8 @@ def get_daily_observed(today_data: pd.DataFrame) -> pd.DataFrame:
     return today_daily_data.reset_index()
 
 
-def get_daily_predictions(today_data, yesterday_data, day_before_yesterday_data):
+def get_daily_predictions(today_data: pd.DataFrame, yesterday_data: pd.DataFrame,
+                          day_before_yesterday_data: pd.DataFrame) -> pd.DataFrame:
     """Gather all predicted data across datasets."""
     latest_date = get_latest_data_date(today_data)
     today_predicted = get_daily_predicted(today_data, latest_date)
@@ -80,7 +81,8 @@ def get_daily_predictions(today_data, yesterday_data, day_before_yesterday_data)
     return all_predicted
 
 
-def moving_average_predictions(today_data_path, yesterday_data_path, day_before_yesterday_path):
+def moving_average_predictions(today_data_path: str, yesterday_data_path: str,
+                               day_before_yesterday_path: str) -> pd.DataFrame:
     """Average the predictions for recent 3 runs."""
     print("Averaging over the following files: ", [today_data_path, yesterday_data_path, day_before_yesterday_path])
     today_data = load_data(today_data_path)
