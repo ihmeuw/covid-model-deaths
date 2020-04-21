@@ -33,16 +33,16 @@ class Drawer:
 
     def _collect_draws(self, ensemble_dir, n_draws, peak_days=3):
         # read model outputs
-        while not os.path.exists(f'{ensemble_dir}/{self.location_name}/draws.pkl'):
-            print(f'    Waiting for {ensemble_dir}/{self.location_name}/draws.pkl...')
+        while not os.path.exists(f'{ensemble_dir}/{self.location_id}/draws.pkl'):
+            print(f'    Waiting for {ensemble_dir}/{self.location_id}/draws.pkl...')
             time.sleep(30)
-        if os.path.exists(f'{ensemble_dir}/{self.location_name}/loose_models.pkl'):
-            with open(f'{ensemble_dir}/{self.location_name}/loose_models.pkl', 'rb') as fread:
+        if os.path.exists(f'{ensemble_dir}/{self.location_id}/loose_models.pkl'):
+            with open(f'{ensemble_dir}/{self.location_id}/loose_models.pkl', 'rb') as fread:
                 models = pickle.load(fread)
         else:
-            with open(f'{ensemble_dir}/{self.location_name}/tight_models.pkl', 'rb') as fread:
+            with open(f'{ensemble_dir}/{self.location_id}/tight_models.pkl', 'rb') as fread:
                 models = pickle.load(fread)
-        with open(f'{ensemble_dir}/{self.location_name}/draws.pkl', 'rb') as fread:
+        with open(f'{ensemble_dir}/{self.location_id}/draws.pkl', 'rb') as fread:
             model_draws = pickle.load(fread)
 
         # get predictions for given location, or use average if not present OR < 5 data points OR < 5 deaths
