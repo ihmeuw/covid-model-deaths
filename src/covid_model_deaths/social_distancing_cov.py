@@ -40,7 +40,7 @@ class SocialDistCov:
         self.closure_sheet = f'/ihme/covid-19/model-inputs/{data_version}/closure_criteria_sheet.xlsx'
         self.closure_df = self._process_closure_dataset()
 
-        # use current date"
+        # use current date
         self.current_date = datetime.strptime(datetime.today().strftime('%Y-%m-%d'), '%Y-%m-%d')
 
         # load threshold death rate
@@ -65,8 +65,13 @@ class SocialDistCov:
         # rest of data
         df.loc[df['Country/Region'].isnull(), 'Country/Region'] = df['Location']
         df.loc[df['Country/Region'] == 'USA', 'Country/Region'] = 'United States of America'
-        df = df.loc[~(df['Location'].isnull()) & ~(df['Country/Region'].isnull())]
-        df = df[['Location', 'Country/Region'] + self.closure_cols]
+        df = df.loc[~(df['location_id'].isnull()) &
+                    ~(df['Location'].isnull()) &
+                    ~(df['Country/Region'].isnull())]
+
+        # just keep location_id as identifier
+        df = df[['location_id'] + self.closure_cols]
+        df['location_id'] = df['location_id'].astype(int)
 
         # convert datetime column
         for date_col in self.closure_cols:
@@ -116,16 +121,16 @@ class SocialDistCov:
         df['cov_3w'] = np.nan
         df = df.loc[df['cov_1w'] > 0]
 
-        return df[['Location', 'Country/Region', 'threshold_date', 'R0 date',
+        return df[['location_id', 'Location', 'Country/Region', 'threshold_date', 'R0 date',
                    'cov_1w', 'cov_2w', 'cov_3w']]
 
     def _calc_composite_empirical_weights(self, empirical_weight_source: str):
         # map of closure codes to names
-        code_map = {'ci_sd1':'People instructed to stay at home',
-                    'ci_sd2':'Educational facilities closed',
-                    'ci_sd3':'Non-essential services closed (i.e., bars/restaurants)',
-                    'ci_psd1':'Any Gathering Restrictions',
-                    'ci_psd3':'Any Business Closures'}
+        code_map = {'ci_sd1': 'People instructed to stay at home',
+                    'ci_sd2': 'Educational facilities closed',
+                    'ci_sd3': 'Non-essential services closed (i.e., bars/restaurants)',
+                    'ci_psd1': 'Any Gathering Restrictions',
+                    'ci_psd3': 'Any Business Closures'}
 
         # load data, just keep average
         weight_df = pd.read_csv(EFFECT_FILE)
@@ -177,9 +182,9 @@ class SocialDistCov:
         df['composite_2w'] = np.nan
         df['composite_3w'] = (df[list(code_map.keys())] * np.array(list(weight_dict.values()))).sum(axis=1)
 
-        return df[['Location', 'Country/Region', 'threshold_date']
-                          + list(code_map.keys())
-                          + ['composite_1w', 'composite_2w', 'composite_3w']]
+        return df[['location_id', 'Location', 'Country/Region', 'threshold_date']
+                   + list(code_map.keys())
+                   + ['composite_1w', 'composite_2w', 'composite_3w']]
 
     def _calc_composite_explicit_weights(self, weights: Union[List[int], List[float], np.ndarray]) -> pd.DataFrame:
         # scale weights
@@ -259,9 +264,9 @@ class SocialDistCov:
 
         # scale to Wuhan
         if 'cov_1w' not in df.columns:
-            wuhan_score_1w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_1w'].item()
-            wuhan_score_2w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_2w'].item()
-            wuhan_score_3w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_3w'].item()
+            wuhan_score_1w = df.loc[df['Location'] == 'Wuhan', 'composite_1w'].item()
+            wuhan_score_2w = df.loc[df['Location'] == 'Wuhan', 'composite_2w'].item()
+            wuhan_score_3w = df.loc[df['Location'] == 'Wuhan', 'composite_3w'].item()
             df['cov_1w'] = (df['composite_1w'] + k) / (wuhan_score_1w + k)
             df['cov_2w'] = (df['composite_2w'] + k) / (wuhan_score_2w + k)
             df['cov_3w'] = (df['composite_3w'] + k) / (wuhan_score_3w + k)
