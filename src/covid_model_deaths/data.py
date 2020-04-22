@@ -133,13 +133,13 @@ class DeathModelData:
         # restrict subnat if needed
         if subnat:
             # this logic should be sound...?
-            print('Only using admin1 and below locations')
+            #print('Only using admin1 and below locations')
             df = df.loc[df['Location'] != df['Country/Region']].reset_index(drop=True)
 
-        print('Dropping Outside Wuhan City, Hubei')
+        #print('Dropping Outside Wuhan City, Hubei')
         df = df.loc[df['Location'] != 'Outside Wuhan City, Hubei'].reset_index(drop=True)
 
-        print('Dropping Outside Hubei')
+        #print('Dropping Outside Hubei')
         df = df.loc[df['Location'] != 'Outside Hubei'].reset_index(drop=True)
 
         # make sure we don't have naming problem
@@ -217,7 +217,9 @@ class DeathModelData:
 
         # fill in missing days and smooth
         loc_df_list = [df.loc[df['location_id'] == l] for l in df['location_id'].unique()]
-        df = pd.concat([self._moving_average_lnasdr(loc_df) for loc_df in loc_df_list]).reset_index(drop=True)
+        df = pd.concat(
+            [moving_average(loc_df, 'ln(age-standardized death rate)', self.rate_threshold) for loc_df in loc_df_list]
+        ).reset_index(drop=True)
 
         ###############################
         # RE-APPLY SECOND DEATH INDEX #
@@ -258,7 +260,7 @@ class DeathModelData:
         delta_df = (delta_df
                     .groupby(['location_id', 'Country/Region', 'Location'], as_index=False)['Delta ln(asdr)']
                     .mean())
-        print('Fix backcasting if we change nursing home observations (drop by name).')
+        #print('Fix backcasting if we change nursing home observations (drop by name).')
         delta_df = delta_df.loc[(delta_df['Delta ln(asdr)'] > 1e-4) &
                                 (~delta_df['Location'].isin(['Life Care Center, Kirkland, WA']))]
         bc_location_ids = delta_df['location_id'].to_list()
@@ -318,45 +320,208 @@ class DeathModelData:
 
         return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
 
-    def _moving_average_lnasdr(self, df: pd.DataFrame) -> pd.DataFrame:
-        if df.location_id.unique().size != 1:
-            raise ValueError('Multiple locations in dataset.')
-        if df['Days'].min() != 0:
-            raise ValueError('Not starting at 0')
-        df = df.merge(pd.DataFrame({'Days': np.arange(df['Days'].min(), df['Days'].max()+1)}), how='outer')
-        df = df.sort_values('Days').reset_index(drop=True)
-        df.loc[df['Date'].isnull(), 'Date'] = (df.loc[df['Date'].isnull(), 'Days']
-                                               .apply(lambda x: df['Date'].min() + timedelta(days=x)))
-        # TODO: Document.
-        df = df.fillna(method='pad')
+def moving_average(df: pd.DataFrame, rate_var: str, rate_threshold: int = None, reset_days: bool = False) -> pd.DataFrame:
+    if reset_days:
+        df['Days'] -= df['Days'].min()
+    if df.location_id.unique().size != 1:
+        raise ValueError('Multiple locations in dataset.')
+    if df['Days'].min() != 0:
+        raise ValueError('Not starting at 0')
+    df = df.merge(pd.DataFrame({'Days': np.arange(df['Days'].min(), df['Days'].max()+1)}), how='outer')
+    df = df.sort_values('Days').reset_index(drop=True)
+    df.loc[df['Date'].isnull(), 'Date'] = (df.loc[df['Date'].isnull(), 'Days']
+                                           .apply(lambda x: df['Date'].min() + timedelta(days=x)))
+    # TODO: Document.
+    df = df.fillna(method='pad')
 
-        # FIXME: Shadowing variable from outer scope.  Make a separate
-        #  function.
-        def moving_3day_avg(day, df):
-            # determine difference
-            days = np.array([day-1, day, day+1])
-            days = days[days >= 0]
-            days = days[days <= df['Days'].max()]
-            avg = df.loc[df['Days'].isin(days), 'ln(age-standardized death rate)'].mean()
+    # FIXME: Shadowing variable from outer scope.  Make a separate
+    #  function.
+    def _moving_3day_avg(day, df):
+        # determine difference
+        days = np.array([day-1, day, day+1])
+        days = days[days >= 0]
+        days = days[days <= df['Days'].max()]
+        avg = df.loc[df['Days'].isin(days), rate_var].mean()
 
-            return avg
+        return avg
 
-        # get diffs
-        avgs = [moving_3day_avg(i, df) for i in df['Days']]
-        df['Observed ln(age-standardized death rate)'] = df['ln(age-standardized death rate)']
-        df['ln(age-standardized death rate)'] = avgs
+    # get diffs
+    avgs = [_moving_3day_avg(i, df) for i in df['Days']]
+    df[f'Observed {rate_var}'] = df[rate_var]
+    df[rate_var] = avgs
 
-        # replace last point w/ daily value over 3->2 and 2->1 and the first
-        # with 1->2, 2->3; use observed if 3 data points or less
-        if len(df) > 3:
-            last_step = np.mean(np.array(avgs[-3:-1]) - np.array(avgs[-4:-2]))
-            df['ln(age-standardized death rate)'][len(df)-1] = (df['ln(age-standardized death rate)'][len(df)-2]
-                                                                + last_step)
-            first_step = np.mean(np.array(avgs[2:4]) - np.array(avgs[1:3]))
-            df['ln(age-standardized death rate)'][0] = df['ln(age-standardized death rate)'][1] - first_step
-            if df['ln(age-standardized death rate)'][0] < self.rate_threshold:
-                df['ln(age-standardized death rate)'][0] = self.rate_threshold
-        else:
-            df['ln(age-standardized death rate)'] = df['Observed ln(age-standardized death rate)']
+    # replace last point w/ daily value over 3->2 and 2->1 and the first
+    # with 1->2, 2->3; use observed if 3 data points or less
+    if len(df) > 3:
+        last_step = np.mean(np.array(avgs[-3:-1]) - np.array(avgs[-4:-2]))
+        df[rate_var][len(df)-1] = (df[rate_var][len(df)-2]
+                                                            + last_step)
+        first_step = np.mean(np.array(avgs[2:4]) - np.array(avgs[1:3]))
+        df[rate_var][0] = df[rate_var][1] - first_step
+        if rate_threshold is not None and df[rate_var][0] < rate_threshold:
+            df[rate_var][0] = rate_threshold
+    else:
+        df[rate_var] = df[f'Observed {rate_var}']
 
+    return df
+
+
+class LeadingIndicator:
+    def __init__(self, df: pd.DataFrame, data_version: str = 'best'):
+        # expect passed in file to be `full_data.csv`
+        self.data_version = data_version
+        self.df = self._clean_up_dataset(df)
+        
+    def _clean_up_dataset(self, df: pd.DataFrame) -> pd.DataFrame:
+        # load hosptalizations
+        hosp_df = pd.read_csv(
+            f'/ihme/covid-19/snapshot-data/{self.data_version}/covid_onedrive/'\
+            'location time series/locs_with_deaths_hosp_cumulative.csv',
+            encoding='latin1'
+        )
+        hosp_df['Date'] = pd.to_datetime(hosp_df['date'], format='%d.%m.%Y')
+        hosp_df['location_id'] = hosp_df['location_id'].apply(lambda x: int(x.split('/t')[-1]) if isinstance(x, str) else x)
+        hosp_df = hosp_df.rename(index=str, columns={'hospitalizations':'Hospitalizations'})
+        hosp_df = hosp_df[['location_id', 'Date', 'Hospitalizations']]
+        df = df.merge(hosp_df, how='left')
+        df['Hospitalization rate'] = df['Hospitalizations'] / df['population']
+        
+        # id
+        df['location_id'] = df['location_id'].astype(int)
+        
+        # get days
+        df['day0'] = df.groupby('location_id', as_index=False)['Date'].transform(min)
+        df['Days'] = df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
+        
+        # get ln
+        df.loc[df['Confirmed case rate'] == 0, 'Confirmed case rate'] = 0.1 / df['population']
+        df.loc[df['Hospitalization rate'] == 0, 'Hospitalizations rate'] = 0.1 / df['population']
+        df.loc[df['Death rate'] == 0, 'Death rate'] = 0.1 / df['population']
+        df['ln(confirmed case rate)'] = np.log(df['Confirmed case rate'])
+        df['ln(hospitalization rate)'] = np.log(df['Hospitalization rate'])
+        df['ln(death rate)'] = np.log(df['Death rate'])
+        df = df[['location_id', 'Date', 'Days', 'population', 
+                 'Confirmed', 'Confirmed case rate', 'ln(confirmed case rate)', 
+                 'Hospitalizations', 'Hospitalization rate', 'ln(hospitalization rate)', 
+                 'Deaths', 'Death rate', 'ln(death rate)']].sort_values(['location_id', 'Date']).reset_index(drop=True)
+        
         return df
+    
+    def _smooth_data(self, df: pd.DataFrame, smooth_var: str, reset_days: bool = False) -> pd.DataFrame:
+        df = df.copy()
+        loc_dfs = [df.loc[df['location_id'] == l].reset_index(drop=True) for l in df.location_id.unique()]
+        loc_df = pd.concat([moving_average(loc_df, smooth_var, reset_days=reset_days) for loc_df in loc_dfs])
+        
+        return loc_df
+    
+    def _average_over_last_days(self, df: pd.DataFrame, avg_var: str, mean_window: int = 3) -> pd.DataFrame:
+        df['latest date'] = df.groupby('location_id', as_index=False)['Date'].transform(max)
+        df['last three days'] = df['latest date'].apply(lambda x: x - timedelta(days=mean_window-1))
+        df = df.loc[df['Date'] >= df['last three days']]
+        df = df.groupby('location_id', as_index=False)[avg_var].mean()
+        
+        return df
+    
+    def _get_death_to_prior_indicator(self) -> pd.DataFrame:
+        # smooth cases, prepare to match with deaths 8 days later
+        case_df = self._smooth_data(self.df, 'ln(confirmed case rate)')
+        case_df['Confirmed case rate'] = np.exp(case_df['ln(confirmed case rate)'])
+        case_df['Date'] = case_df['Date'].apply(lambda x: x + timedelta(days=8))
+        full_case_df = case_df[['location_id', 'Date', 'Confirmed case rate']].copy()
+        case_df = case_df.loc[case_df['Confirmed'] > 0].reset_index(drop=True)
+
+        # do the same thing with hospitalizations
+        hosp_df = self._smooth_data(self.df.loc[~self.df['Hospitalizations'].isnull()], 
+                                    'ln(hospitalization rate)',
+                                    reset_days=True)
+        hosp_df['Hospitalization rate'] = np.exp(hosp_df['ln(hospitalization rate)'])
+        hosp_df['Date'] = hosp_df['Date'].apply(lambda x: x + timedelta(days=8))
+        full_hosp_df = hosp_df[['location_id', 'Date', 'Hospitalization rate']].copy()
+        hosp_df = hosp_df.loc[hosp_df['Hospitalizations'] > 0].reset_index(drop=True)
+
+        # smooth deaths
+        death_df = self._smooth_data(self.df, 'ln(death rate)')
+        death_df['Death rate'] = np.exp(death_df['ln(death rate)'])
+        full_death_df = death_df[['location_id', 'Date', 'Deaths', 'Death rate']].copy()
+        death_df = death_df.loc[death_df['Deaths'] > 0].reset_index(drop=True)
+        
+        # calc ratios by day
+        dcr_df = death_df[['location_id', 'Date', 'Death rate']].merge(
+            case_df[['location_id', 'Date', 'Confirmed case rate']]
+        )
+        dhr_df = death_df[['location_id', 'Date', 'Death rate']].merge(
+            hosp_df[['location_id', 'Date', 'Hospitalization rate']]
+        )
+        dcr_df['dcr lag8'] = dcr_df['Death rate'] / dcr_df['Confirmed case rate']
+        dhr_df['dhr lag8'] = dhr_df['Death rate'] / dhr_df['Hospitalization rate']
+        
+        # average ratios of last 3 days
+        dcr_df = self._average_over_last_days(dcr_df, 'dcr lag8', 3)
+        dhr_df = self._average_over_last_days(dhr_df, 'dhr lag8', 3)
+        
+        return full_case_df, full_hosp_df, full_death_df, dcr_df, dhr_df
+    
+    def _stream_out_deaths(self, df: pd.DataFrame, death_df: pd.DataFrame) -> pd.DataFrame:
+        # convert to daily, fix to last day of observed deaths
+        df = df.sort_values(['location_id', 'Date']).reset_index(drop=True)
+        daily = df['Death rate'].values[1:] - df['Death rate'].values[:-1]
+        df['Daily death rate'] = np.nan
+        df['Daily death rate'][1:] = daily
+        del df['Death rate']
+        df = df.merge(death_df[['location_id', 'last date', 'Death rate']])
+        df = df.loc[df['Date'] > df['last date']]  # will exclude days where diff is one locations last day and anothers first
+        df = df.sort_values(['location_id', 'Date']).reset_index(drop=True)
+        df['Death rate'] = df.groupby('location_id', as_index=False)['Daily death rate'].cumsum().values + \
+                           df[['Death rate']].values
+        
+        
+        # call it ln(asdr) since we are only adding to locations in their own models
+        df['ln(age-standardized death rate)'] = np.log(df['Death rate'])
+        
+        return df
+    
+    def produce_deaths(self) -> pd.DataFrame:
+        # get ratio
+        case_df, hosp_df, death_df, dcr_df, dhr_df = self._get_death_to_prior_indicator()
+        
+        # set limits on ratio based on number of deaths...
+        #   - if >= 10, use 2.5th/97.5th of ratios in places with more than
+        #     30 deaths (0.02, 0.2)
+        #   - if < 10, use 10th/90th of that group (0.03, 0.15)
+        death_df['last date'] = death_df.groupby('location_id', as_index=False)['Date'].transform(max)
+        death_df = death_df.loc[death_df['Date'] == death_df['last date']]
+        death_df = death_df[['location_id', 'last date', 'Deaths', 'Death rate']]
+#         ratio_df = ratio_df.merge(death_df[['location_id', 'Deaths']])
+#         ratio_df.loc[(ratio_df['Deaths'] >= 10) & (ratio_df['dcr lag8'] < 0.02), 'dcr lag8'] = 0.02
+#         ratio_df.loc[(ratio_df['Deaths'] >= 10) & (ratio_df['dcr lag8'] > 0.2), 'dcr lag8'] = 0.2
+#         ratio_df.loc[(ratio_df['Deaths'] < 10) & (ratio_df['dcr lag8'] < 0.03), 'dcr lag8'] = 0.03
+#         ratio_df.loc[(ratio_df['Deaths'] < 10) & (ratio_df['dcr lag8'] > 0.15), 'dcr lag8'] = 0.15
+#         del ratio_df['Deaths']
+#         ratio_df['location_id'] = ratio_df['location_id'].astype(int)
+        
+        # apply ratio to get deaths (use <10 deaths floor as ratio for places without deaths thus far)
+        dc_df = case_df.merge(dcr_df[['location_id', 'dcr lag8']], how='left')
+        dh_df = hosp_df.merge(dhr_df[['location_id', 'dhr lag8']], how='left')
+        dc_df['location_id'] = dc_df['location_id'].astype(int)
+        dh_df['location_id'] = dh_df['location_id'].astype(int)
+#         df['dcr lag8'] = df['dcr lag8'].fillna(0.03)
+        dc_df['Death rate'] = dc_df['Confirmed case rate'] * dc_df['dcr lag8']
+        dh_df['Death rate'] = dh_df['Hospitalization rate'] * dh_df['dhr lag8']
+        
+        # start daily deaths from last data point
+        death_df['location_id'] = death_df['location_id'].astype(int)
+        dc_df = self._stream_out_deaths(dc_df, death_df)
+        dc_df = dc_df.rename(index=str, columns={'ln(age-standardized death rate)': 'from_cases'})
+        dh_df = self._stream_out_deaths(dh_df, death_df)
+        dh_df = dh_df.rename(index=str, columns={'ln(age-standardized death rate)': 'from_hospital'})
+        df = dc_df[['location_id', 'Date', 'from_cases']].merge(
+            dh_df[['location_id', 'Date', 'from_hospital']],
+            how='outer'
+        )
+        
+        ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
+        # TODO:structure is for diagnostic purposes, update
+        ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
+        
+        return dcr_df, dhr_df, df  # [['location_id', 'Date', 'ln(age-standardized death rate)']]
+        

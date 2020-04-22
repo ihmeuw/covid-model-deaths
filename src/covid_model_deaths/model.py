@@ -75,6 +75,7 @@ def ap_model(df, model_location, location_cov, n_draws,
     dummy_uprior = [-np.inf, np.inf]
     zero_uprior = [0.0, 0.0]
     fe_init = np.array([-2.5, 28.0, -8.05])
+    initial_scalars = [[-0.5, 0.0, 0.5], [0.0], [0.0]]
     fe_bounds = [[-np.inf, 0.0], [15.0, 100.0], [-10, -6]]
     options = {
         'ftol': 1e-10,
@@ -122,7 +123,7 @@ def ap_model(df, model_location, location_cov, n_draws,
 
     # for prediction of places with no data
     alpha_times_beta = np.exp(0.7)
-    obs_bounds = [30, np.inf] # filter the data rich models
+    obs_bounds = [35, np.inf] # filter the data rich models
     predict_cov = np.array([1.0, location_cov, 1.0]) # new covariates for the places.
 
     # tight prior control panel
@@ -188,7 +189,9 @@ def ap_model(df, model_location, location_cov, n_draws,
         tight_model.fit_dict.update({
             'fe_bounds': [fe_bounds[0], [1, 1], fe_bounds[2]]
         })
-    tight_model.run(last_info=last_info, **draw_dict)
+    tight_model.run(last_info=last_info,
+                    initial_scalars=initial_scalars, 
+                    **draw_dict)
     loose_model = APModel(
         all_data=df,
         **loose_info_dict,
@@ -201,7 +204,9 @@ def ap_model(df, model_location, location_cov, n_draws,
         loose_model.fit_dict.update({
             'fe_bounds': [fe_bounds[0], [1, 1], fe_bounds[2]]
         })
-    loose_model.run(last_info=last_info, **draw_dict)
+    loose_model.run(last_info=last_info,
+                    initial_scalars=initial_scalars, 
+                    **draw_dict)
 
     # get truncated draws
     tight_draws = tight_model.process_draws(draw_dict['prediction_times'],
@@ -321,6 +326,7 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     dummy_uprior = [-np.inf, np.inf]
     zero_uprior = [0.0, 0.0]
     fe_init = np.array([-2.5, 28.0, -8.05])
+    initial_scalars = [[-0.5, 0.0, 0.5], [0.0], [0.0]]
     fe_bounds = [[-np.inf, 0.0], [15.0, 100.0], [-15, -6]]
     options = {
         'ftol': 1e-10,
@@ -418,7 +424,8 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
         exclude_below=0,
         last_info={
             model_location:[fix_day, fix_point]
-        }
+        },
+        initial_scalars=initial_scalars
     )
     daily_draws = model.process_draws(np.arange(pred_days),
                                       last_info={
