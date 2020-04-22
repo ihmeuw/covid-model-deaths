@@ -47,33 +47,34 @@ class SocialDistCov:
         # load data, keep relevant rows/columns
         df = pd.read_excel(self.closure_sheet)
 
+## This does not work, turns the location_id column into a float. ##    
         # This is very annoying, the closure_criteria_sheet
         # Does not have the county/city information. Set equal
         # to the values for the state. 
-        ca_ids = [787,790,792,794,796,799,814]
-        ca_names = ['Marin County','Contra Costa County','San Francisco County','Alameda County','San Mateo County','Santa Clara County','Los Angeles County']
-        for location_id, location in zip(ca_ids, ca_names):
-            nrep = df[df['location_id'] == 527]
-            nrep['merge_name'] = location
-            nrep['location_id'] = location_id
-            df = df.append(nrep)
-        ny_ids = [60410, 60411]
-        ny_names = ['New York Metropolitan Area', 'Outside of New York City']
-        for location_id, location in zip(ny_ids, ny_names):
-            nrep = df[df['location_id'] == 555]
-            nrep['merge_name'] = location
-            nrep['location_id'] = location_id
-            df = df.append(nrep)
+#         ca_ids = [787,790,792,794,796,799,814]
+#         ca_names = ['Marin County','Contra Costa County','San Francisco County','Alameda County','San Mateo County','Santa Clara County','Los Angeles County']
+#         for location_id, location in zip(ca_ids, ca_names):
+#             nrep = df[df['location_id'] == 527]
+#             nrep['merge_name'] = location
+#             nrep['location_id'] = location_id
+#             df = df.append(nrep)
+#         ny_ids = [60410, 60411]
+#         ny_names = ['New York Metropolitan Area', 'Outside of New York City']
+#         for location_id, location in zip(ny_ids, ny_names):
+#             nrep = df[df['location_id'] == 555]
+#             nrep['merge_name'] = location
+#             nrep['location_id'] = location_id
+#             df = df.append(nrep)
 
-        nrep = df[df['location_id'] == 558]
-        nrep['merge_name'] = 'UC Health'
-        nrep['location_id'] = 60416
-        df = df.append(nrep)    
+#         nrep = df[df['location_id'] == 558]
+#         nrep['merge_name'] = 'UC Health'
+#         nrep['location_id'] = 60416
+#         df = df.append(nrep)    
 
-        nrep = df[df['location_id'] == 532]
-        nrep['merge_name'] = 'Miami-Dade County'
-        nrep['location_id'] = 957
-        df = df.append(nrep)   
+#         nrep = df[df['location_id'] == 532]
+#         nrep['merge_name'] = 'Miami-Dade County'
+#         nrep['location_id'] = 957
+#         df = df.append(nrep)   
         
         # FIXME: there have been issues in the past with merge_name and
         #  country not being the same, such that the threshold merge fails.
