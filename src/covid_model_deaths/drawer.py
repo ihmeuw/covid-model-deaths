@@ -138,8 +138,9 @@ class Drawer:
         n_draws = len([i for i in df.columns if i.startswith('draw_')])
         draw_cols = [f'draw_{i}' for i in range(n_draws)]
         df = df.loc[df['date'] <= datetime.strptime(self.final_date, '%Y-%m-%d')].reset_index(drop=True)
-        assert not df.loc[df['date'] == datetime.strptime(self.final_date, '%Y-%m-%d'), draw_cols].isnull().any(axis=1).item(), \
-            f'Some draws not out to {final_date}.'
+        # Check number of nulls on the final date
+        num_nulls_on_final_date = df.loc[df['date'] == datetime.strptime(self.final_date, '%Y-%m-%d'), draw_cols].isnull().sum(axis=1).iloc[0]
+        assert num_nulls_on_final_date < 10, f"There were {num_nulls_on_final_date} null draws on {self.final_date}"
         df = df.fillna(0)
         
         # sort draws
