@@ -66,9 +66,6 @@ class SocialDistCov:
                     ~(df['Country/Region'].isnull())]
         #df = df[['Location', 'Country/Region'] + self.closure_cols]
         
-        # replace Wuhan location_id until we it is updated in the ETL
-#         df.loc[df['Location'] == 'Wuhan City, Hubei', 'location_id'] = -503002
-        
         # just keep location_id as identifier
         df = df[['location_id'] + self.closure_cols]
         df['location_id'] = df['location_id'].astype(int)

@@ -367,23 +367,13 @@ def moving_average(df: pd.DataFrame, rate_var: str, rate_threshold: int = None, 
 
 
 class LeadingIndicator:
-    def __init__(self, df: pd.DataFrame, data_version: str = 'best'):
+    def __init__(self, full_df: pd.DataFrame, data_version: str = 'best'):
         # expect passed in file to be `full_data.csv`
         self.data_version = data_version
-        self.df = self._clean_up_dataset(df)
+        self.full_df = self._clean_up_dataset(full_df)
         
     def _clean_up_dataset(self, df: pd.DataFrame) -> pd.DataFrame:
-        # load hosptalizations
-        hosp_df = pd.read_csv(
-            f'/ihme/covid-19/snapshot-data/{self.data_version}/covid_onedrive/'\
-            'location time series/locs_with_deaths_hosp_cumulative.csv',
-            encoding='latin1'
-        )
-        hosp_df['Date'] = pd.to_datetime(hosp_df['date'], format='%d.%m.%Y')
-        hosp_df['location_id'] = hosp_df['location_id'].apply(lambda x: int(x.split('/t')[-1]) if isinstance(x, str) else x)
-        hosp_df = hosp_df.rename(index=str, columns={'hospitalizations':'Hospitalizations'})
-        hosp_df = hosp_df[['location_id', 'Date', 'Hospitalizations']]
-        df = df.merge(hosp_df, how='left')
+        # hosptalization rate not in data
         df['Hospitalization rate'] = df['Hospitalizations'] / df['population']
         
         # id
@@ -410,9 +400,9 @@ class LeadingIndicator:
     def _smooth_data(self, df: pd.DataFrame, smooth_var: str, reset_days: bool = False) -> pd.DataFrame:
         df = df.copy()
         loc_dfs = [df.loc[df['location_id'] == l].reset_index(drop=True) for l in df.location_id.unique()]
-        loc_df = pd.concat([moving_average(loc_df, smooth_var, reset_days=reset_days) for loc_df in loc_dfs])
+        df = pd.concat([moving_average(loc_df, smooth_var, reset_days=reset_days) for loc_df in loc_dfs])
         
-        return loc_df
+        return df
     
     def _average_over_last_days(self, df: pd.DataFrame, avg_var: str, mean_window: int = 3) -> pd.DataFrame:
         df['latest date'] = df.groupby('location_id', as_index=False)['Date'].transform(max)
@@ -424,14 +414,14 @@ class LeadingIndicator:
     
     def _get_death_to_prior_indicator(self) -> pd.DataFrame:
         # smooth cases, prepare to match with deaths 8 days later
-        case_df = self._smooth_data(self.df, 'ln(confirmed case rate)')
+        case_df = self._smooth_data(self.full_df, 'ln(confirmed case rate)')
         case_df['Confirmed case rate'] = np.exp(case_df['ln(confirmed case rate)'])
         case_df['Date'] = case_df['Date'].apply(lambda x: x + timedelta(days=8))
         full_case_df = case_df[['location_id', 'Date', 'Confirmed case rate']].copy()
         case_df = case_df.loc[case_df['Confirmed'] > 0].reset_index(drop=True)
 
-        # do the same thing with hospitalizations
-        hosp_df = self._smooth_data(self.df.loc[~self.df['Hospitalizations'].isnull()], 
+        # do the same thing with hospitalizations (not present for all locs, so subset)
+        hosp_df = self._smooth_data(self.full_df.loc[~self.full_df['Hospitalizations'].isnull()], 
                                     'ln(hospitalization rate)',
                                     reset_days=True)
         hosp_df['Hospitalization rate'] = np.exp(hosp_df['ln(hospitalization rate)'])
@@ -440,7 +430,7 @@ class LeadingIndicator:
         hosp_df = hosp_df.loc[hosp_df['Hospitalizations'] > 0].reset_index(drop=True)
 
         # smooth deaths
-        death_df = self._smooth_data(self.df, 'ln(death rate)')
+        death_df = self._smooth_data(self.full_df, 'ln(death rate)')
         death_df['Death rate'] = np.exp(death_df['ln(death rate)'])
         full_death_df = death_df[['location_id', 'Date', 'Deaths', 'Death rate']].copy()
         death_df = death_df.loc[death_df['Deaths'] > 0].reset_index(drop=True)
@@ -474,54 +464,75 @@ class LeadingIndicator:
         df['Death rate'] = df.groupby('location_id', as_index=False)['Daily death rate'].cumsum().values + \
                            df[['Death rate']].values
         
+        return df
+    
+    def _combine_data(self, df: pd.DataFrame, rate_var: str, ratio_var: str, 
+                      ratio_df: pd.DataFrame, na_fill: float) -> pd.DataFrame:
+        df = df.merge(ratio_df, how='left')
+        df['location_id'] = df['location_id'].astype(int)
+        df[ratio_var] = df[ratio_var].fillna(na_fill)
+        df['Death rate'] = df[rate_var] * df[ratio_var]
+        del df[rate_var]
+        del df[ratio_var]
         
-        # call it ln(asdr) since we are only adding to locations in their own models
-        df['ln(age-standardized death rate)'] = np.log(df['Death rate'])
-        
+        return df
+    
+    def _combine_sources(self, df):
+        # only use hospital if it is up to date or 1 day behind
+        if df['from_hospital'].isnull().sum() < 2:
+            df = df.loc[~df['from_hospital'].isnull()]
+            df['Death rate'] = df[['from_cases', 'from_hospital']].mean(axis=1)
+            df['source'] = 'cases+hospital'
+        else:
+            df['Death rate'] = df['from_cases']
+            df['source'] = 'cases'
+            
         return df
     
     def produce_deaths(self) -> pd.DataFrame:
         # get ratio
         case_df, hosp_df, death_df, dcr_df, dhr_df = self._get_death_to_prior_indicator()
         
-        # set limits on ratio based on number of deaths...
-        #   - if >= 10, use 2.5th/97.5th of ratios in places with more than
-        #     30 deaths (0.02, 0.2)
-        #   - if < 10, use 10th/90th of that group (0.03, 0.15)
+        # get last day of observed deaths and smoothed death rate
         death_df['last date'] = death_df.groupby('location_id', as_index=False)['Date'].transform(max)
         death_df = death_df.loc[death_df['Date'] == death_df['last date']]
         death_df = death_df[['location_id', 'last date', 'Deaths', 'Death rate']]
-#         ratio_df = ratio_df.merge(death_df[['location_id', 'Deaths']])
-#         ratio_df.loc[(ratio_df['Deaths'] >= 10) & (ratio_df['dcr lag8'] < 0.02), 'dcr lag8'] = 0.02
-#         ratio_df.loc[(ratio_df['Deaths'] >= 10) & (ratio_df['dcr lag8'] > 0.2), 'dcr lag8'] = 0.2
-#         ratio_df.loc[(ratio_df['Deaths'] < 10) & (ratio_df['dcr lag8'] < 0.03), 'dcr lag8'] = 0.03
-#         ratio_df.loc[(ratio_df['Deaths'] < 10) & (ratio_df['dcr lag8'] > 0.15), 'dcr lag8'] = 0.15
-#         del ratio_df['Deaths']
-#         ratio_df['location_id'] = ratio_df['location_id'].astype(int)
+        
+        # set limits on death-to-case ratio based on number of deaths...
+        #   - if >= 10, use 2.5th/97.5th of ratios in places with more than
+        #     30 deaths (0.02, 0.2)
+        #   - if < 10, use 10th/90th of that group (0.03, 0.15)
+        dcr_df = dcr_df.merge(death_df[['location_id', 'Deaths']])
+        dcr_df.loc[(dcr_df['Deaths'] >= 10) & (dcr_df['dcr lag8'] < 0.02), 'dcr lag8'] = 0.02
+        dcr_df.loc[(dcr_df['Deaths'] >= 10) & (dcr_df['dcr lag8'] > 0.2), 'dcr lag8'] = 0.2
+        dcr_df.loc[(dcr_df['Deaths'] < 10) & (dcr_df['dcr lag8'] < 0.03), 'dcr lag8'] = 0.03
+        dcr_df.loc[(dcr_df['Deaths'] < 10) & (dcr_df['dcr lag8'] > 0.15), 'dcr lag8'] = 0.15
+        del dcr_df['Deaths']
+        dcr_df['location_id'] = dcr_df['location_id'].astype(int)
         
         # apply ratio to get deaths (use <10 deaths floor as ratio for places without deaths thus far)
-        dc_df = case_df.merge(dcr_df[['location_id', 'dcr lag8']], how='left')
-        dh_df = hosp_df.merge(dhr_df[['location_id', 'dhr lag8']], how='left')
-        dc_df['location_id'] = dc_df['location_id'].astype(int)
-        dh_df['location_id'] = dh_df['location_id'].astype(int)
-#         df['dcr lag8'] = df['dcr lag8'].fillna(0.03)
-        dc_df['Death rate'] = dc_df['Confirmed case rate'] * dc_df['dcr lag8']
-        dh_df['Death rate'] = dh_df['Hospitalization rate'] * dh_df['dhr lag8']
+        dc_df = self._combine_data(case_df, 'Confirmed case rate', 'dcr lag8', 
+                                   dcr_df[['location_id', 'dcr lag8']], 0.03)
+        dh_df = self._combine_data(hosp_df, 'Hospitalization rate', 'dhr lag8', 
+                                   dhr_df[['location_id', 'dhr lag8']], 0.1)
         
         # start daily deaths from last data point
         death_df['location_id'] = death_df['location_id'].astype(int)
         dc_df = self._stream_out_deaths(dc_df, death_df)
-        dc_df = dc_df.rename(index=str, columns={'ln(age-standardized death rate)': 'from_cases'})
+        dc_df = dc_df.rename(index=str, columns={'Death rate': 'from_cases'})
         dh_df = self._stream_out_deaths(dh_df, death_df)
-        dh_df = dh_df.rename(index=str, columns={'ln(age-standardized death rate)': 'from_hospital'})
+        dh_df = dh_df.rename(index=str, columns={'Death rate': 'from_hospital'})
         df = dc_df[['location_id', 'Date', 'from_cases']].merge(
             dh_df[['location_id', 'Date', 'from_hospital']],
             how='outer'
         )
         
-        ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
-        # TODO:structure is for diagnostic purposes, update
-        ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
+        # combine locations
+        df = pd.concat(
+            [self._combine_sources(df.loc[df['location_id'] == l]) for l in df['location_id'].unique()]
+        ).reset_index(drop=True)
+        df['ln(age-standardized death rate)'] = np.log(df['Death rate'])
         
-        return dcr_df, dhr_df, df  # [['location_id', 'Date', 'ln(age-standardized death rate)']]
+        return dcr_df, dhr_df, df[['location_id', 'Date', 'ln(age-standardized death rate)', 
+                                   'from_cases', 'from_hospital', 'source']]
         

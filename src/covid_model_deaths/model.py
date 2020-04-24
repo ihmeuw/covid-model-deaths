@@ -27,6 +27,7 @@ RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
 PSEUDO_SE = 5
+N_B = 29
 
 
 def get_hash(key: str) -> int:
@@ -123,7 +124,7 @@ def ap_model(df, model_location, location_cov, n_draws,
 
     # for prediction of places with no data
     alpha_times_beta = np.exp(0.7)
-    obs_bounds = [35, np.inf] # filter the data rich models
+    obs_bounds = [40, np.inf] # filter the data rich models
     predict_cov = np.array([1.0, location_cov, 1.0]) # new covariates for the places.
 
     # tight prior control panel
@@ -380,22 +381,14 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     df = process_input(df, 'location_id', 'days', 'Age-standardized death rate',
                        col_covs=[COVARIATE, 'intercept', 'obs_se'])
 
-    # # set number of basis functions based on data
-    # if len(df.loc[df['location'] == model_location]) < 20:
-    #     n_b = 7
-    # elif len(df.loc[df['location'] == model_location]) < 22:
-    #     n_b = 9
-    # elif len(df.loc[df['location'] == model_location]) < 24:
-    #     n_b = 11
-    # else:
-    #     n_b = 13
-    # print(f'basis functions: {n_b}')
-    n_b = 13
+    # set number of basis functions based on data
+    n_b = N_B
     
-    # set bounds on Gaussian mixture weights
-    gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
-    gm_bounds[-1] = [0.18, 4.]
-    gm_bounds = np.vstack([gm_bounds, [[0, np.inf]]])  # add bounds on sum of weights
+    # # set bounds on Gaussian mixture weights
+    # gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
+    # gm_bounds[-1] = [0.18, 4.]
+    gm_bounds = np.repeat(np.array([[0, np.inf]]), n_b, axis=0)
+    gm_bounds = np.vstack([gm_bounds, [[0, 10.]]])  # add bounds on sum of weights
     gm_fit_dict = {
         'bounds': gm_bounds
     }
@@ -539,12 +532,12 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 def run_death_models():
     """
     args = argparse.Namespace(
-        model_location_id=4750,
-        data_file='/ihme/covid-19/deaths/dev/2020_04_18_Europe/model_data_google_21/Acre.csv',
-        cov_file='/ihme/covid-19/deaths/dev/2020_04_18_Europe/model_data_google_21/Acre covariate.csv',
-        last_day_file='/ihme/covid-19/deaths/dev/2020_04_18_Europe/last_day.csv',
-        peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_14/final_peak_locs_04_14.csv',
-        output_dir='/ihme/covid-19/deaths/dev/2020_04_18_Europe/model_data_google_21/Acre',
+        model_location_id=123,
+        data_file='/ihme/covid-19/deaths/prod/2020_04_22_Europe/model_data_google_21/123.csv',
+        cov_file='/ihme/covid-19/deaths/prod/2020_04_22_Europe/model_data_google_21/123_covariate.csv',
+        last_day_file='/ihme/covid-19/deaths/prod/2020_04_22_Europe/last_day.csv',
+        peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv',
+        output_dir='/ihme/covid-19/deaths/prod/2020_04_22_Europe/model_data_google_21/123',
         covariate_effect='gamma',
         n_draws=333
     )
@@ -581,7 +574,7 @@ def run_death_models():
     cov_df = pd.read_csv(args.cov_file)
 
     # try setting floor for covariate
-    cov_df.loc[cov_df[COVARIATE] < 0.25, COVARIATE] = 0.25
+    cov_df.loc[cov_df[COVARIATE] < 0.5, COVARIATE] = 0.5
 
     # attach covs to data file
     df = pd.merge(df, cov_df[['location_id', COVARIATE]], how='left')
@@ -601,10 +594,6 @@ def run_death_models():
     # identify covariate value for our location
     location_cov = cov_df.loc[cov_df['location_id'] == args.model_location_id,
                               COVARIATE].item()
-
-    # don't let it be below 10 / 28
-    if location_cov < 0.36:
-        location_cov = 0.36
 
     # get list of peaked locations
     peaked_df = pd.read_csv(args.peaked_file)
@@ -640,7 +629,7 @@ def run_death_models():
             location_cov=location_cov,
             n_draws=args.n_draws,
             peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id'].unique().tolist(),
+            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan', 'location_id'].unique().tolist(),
             fix_gamma=fix_gamma,
             fix_point=fix_point,
             fix_day=fix_day
@@ -653,7 +642,7 @@ def run_death_models():
             model_location=f'_{args.model_location_id}',
             n_draws=args.n_draws,
             peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id'].unique().tolist(),
+            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan', 'location_id'].unique().tolist(),
             fix_point=fix_point,
             fix_day=fix_day
         )
@@ -678,6 +667,10 @@ def run_death_models():
             pickle.dump(loose_model.models, fwrite, -1)
         with open(f'{args.output_dir}/loose_model_fit_dict.pkl', 'wb') as fwrite:
             pickle.dump(loose_model.fit_dict, fwrite, -1)
+    else:
+        # GM data
+        with open(f'{args.output_dir}/gaussian_mixtures.pkl', 'wb') as fwrite:
+            pickle.dump(tight_model.gaussian_mixtures, fwrite, -1)
     # tight
     with open(f'{args.output_dir}/tight_models.pkl', 'wb') as fwrite:
         pickle.dump(tight_model.models, fwrite, -1)
