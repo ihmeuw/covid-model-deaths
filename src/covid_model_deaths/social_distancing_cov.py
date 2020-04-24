@@ -24,10 +24,14 @@ EFFECT_FILE = '/ihme/covid-19/deaths/mobility_inputs/2020_04_14/effs_on_DL_GLavg
 
 
 class SocialDistCov:
-    closure_cols = ['People instructed to stay at home', 'Educational facilities closed',
-                    'Non-essential services closed (i.e., bars/restaurants)', 'Rationing of supplies and requsitioning of facilities',
-                    'Travel severely limited', 'Major reprioritisation of healthcare services',
-                    'Any Gathering Restrictions', 'Any Business Closures']
+    closure_cols = ['People instructed to stay at home',
+                    'Educational facilities closed',
+                    'Non-essential services closed (i.e., bars/restaurants)',
+                    'Rationing of supplies and requsitioning of facilities',
+                    'Travel severely limited',
+                    'Major reprioritisation of healthcare services',
+                    'Any Gathering Restrictions',
+                    'Any Business Closures']
     closure_level_idx = [0, 1, 2, 4]
 
     def __init__(self, death_df: pd.DataFrame, date_df: pd.DataFrame = None, data_version: str = 'best'):
@@ -47,35 +51,6 @@ class SocialDistCov:
         # load data, keep relevant rows/columns
         df = pd.read_excel(self.closure_sheet)
 
-## This does not work, turns the location_id column into a float. ##    
-        # This is very annoying, the closure_criteria_sheet
-        # Does not have the county/city information. Set equal
-        # to the values for the state. 
-#         ca_ids = [787,790,792,794,796,799,814]
-#         ca_names = ['Marin County','Contra Costa County','San Francisco County','Alameda County','San Mateo County','Santa Clara County','Los Angeles County']
-#         for location_id, location in zip(ca_ids, ca_names):
-#             nrep = df[df['location_id'] == 527]
-#             nrep['merge_name'] = location
-#             nrep['location_id'] = location_id
-#             df = df.append(nrep)
-#         ny_ids = [60410, 60411]
-#         ny_names = ['New York Metropolitan Area', 'Outside of New York City']
-#         for location_id, location in zip(ny_ids, ny_names):
-#             nrep = df[df['location_id'] == 555]
-#             nrep['merge_name'] = location
-#             nrep['location_id'] = location_id
-#             df = df.append(nrep)
-
-#         nrep = df[df['location_id'] == 558]
-#         nrep['merge_name'] = 'UC Health'
-#         nrep['location_id'] = 60416
-#         df = df.append(nrep)    
-
-#         nrep = df[df['location_id'] == 532]
-#         nrep['merge_name'] = 'Miami-Dade County'
-#         nrep['location_id'] = 957
-#         df = df.append(nrep)   
-        
         # FIXME: there have been issues in the past with merge_name and
         #  country not being the same, such that the threshold merge fails.
         #  recognize this function's reliance on merge_name if debugging.
@@ -93,10 +68,6 @@ class SocialDistCov:
         df = df.loc[~(df['location_id'].isnull()) & 
                     ~(df['Location'].isnull()) & 
                     ~(df['Country/Region'].isnull())]
-        #df = df[['Location', 'Country/Region'] + self.closure_cols]
-        
-        # replace Wuhan location_id until we it is updated in the ETL
-        df.loc[df['Location'] == 'Wuhan City, Hubei', 'location_id'] = -503002
         
         # just keep location_id as identifier
         df = df[['location_id'] + self.closure_cols]
@@ -129,7 +100,7 @@ class SocialDistCov:
             ).reset_index(drop=True)
 
         return df
-    
+
     def _calc_peak_date(self, prob: str, R0_file: str):
         # get R0 == 1 file
         r0_df = pd.read_csv(R0_file)
@@ -139,27 +110,27 @@ class SocialDistCov:
             r0_df['R0 date'] = pd.to_datetime(r0_df['p50_date'])
         elif prob == 'R0_65':
             r0_df['R0 date'] = pd.to_datetime(r0_df['p65_date'])
-        
+
         # get days from threshold
         df = self.thresh_df.merge(r0_df[['location_id', 'R0 date']])
-        
-        # get predicted days from threshold to peak (will act directly on beta; 
+
+        # get predicted days from threshold to peak (will act directly on beta;
         # not actually composite like other covariates, should improve this)
         df['cov_1w'] = df.apply(lambda x: (x['R0 date'] - x['threshold_date']).days + 19, axis=1)
         df['cov_2w'] = np.nan
         df['cov_3w'] = np.nan
         df = df.loc[df['cov_1w'] > 0]
-        
-        return df[['location_id', 'Location', 'Country/Region', 'threshold_date', 'R0 date', 
+
+        return df[['location_id', 'Location', 'Country/Region', 'threshold_date', 'R0 date',
                    'cov_1w', 'cov_2w', 'cov_3w']]
-    
+
     def _calc_composite_empirical_weights(self, empirical_weight_source: str):
         # map of closure codes to names
-        code_map = {'ci_sd1':'People instructed to stay at home', 
-                    'ci_sd2':'Educational facilities closed', 
-                    'ci_sd3':'Non-essential services closed (i.e., bars/restaurants)', 
-                    'ci_psd1':'Any Gathering Restrictions', 
-                    'ci_psd3':'Any Business Closures'}
+        code_map = {'ci_sd1': 'People instructed to stay at home',
+                    'ci_sd2': 'Educational facilities closed',
+                    'ci_sd3': 'Non-essential services closed (i.e., bars/restaurants)',
+                    'ci_psd1': 'Any Gathering Restrictions',
+                    'ci_psd3': 'Any Business Closures'}
 
         # load data, just keep average
         weight_df = pd.read_csv(EFFECT_FILE)
@@ -179,8 +150,8 @@ class SocialDistCov:
         # remove partial effect from full (will use these as compounding in weighting)
         weight_df['ci_sd1'] = weight_df['ci_sd1'] - weight_df['ci_psd1']
         weight_df['ci_sd3'] = weight_df['ci_sd3'] - weight_df['ci_psd3']
-        weight_df = pd.melt(weight_df, 
-                            id_vars=['metric'], 
+        weight_df = pd.melt(weight_df,
+                            id_vars=['metric'],
                             value_vars=list(code_map.keys()),
                             var_name='closure_code',
                             value_name='effect')
@@ -205,7 +176,7 @@ class SocialDistCov:
             df.loc[df[closure_code].isnull(), closure_code] =  df.loc[df[closure_code].isnull()].apply(
                 lambda x: (self.current_date - x['threshold_date']).days + 21, axis=1
             )
-        
+
         # combine w/ weights
         df['composite_1w'] = np.nan
         df['composite_2w'] = np.nan
@@ -227,7 +198,7 @@ class SocialDistCov:
 
         # get days from threshold
         df = self.thresh_df.merge(self.closure_df)
-        for i in (self.closure_level_idx):
+        for i in self.closure_level_idx:
             df[f'closure_id_{i}'] = df.apply(lambda x: (x[self.closure_cols[i]] - x['threshold_date']).days, axis=1)
 
         # get smallest [n_levels] day counts out of our list of closure dates
@@ -240,7 +211,7 @@ class SocialDistCov:
             )
         closure_vars = [f'closure_{i+1}' for i in range(n_levels)]
 
-        ## 1 week
+        # 1 week
         # get composite
         df['composite_1w'] = (df[closure_vars] * weights).sum(axis=1)
 
@@ -252,7 +223,7 @@ class SocialDistCov:
                 axis=1
             )
 
-        ## 2 week
+        # 2 week
         # get composite
         df['composite_2w'] = (df[closure_vars] * weights).sum(axis=1)
 
@@ -264,7 +235,7 @@ class SocialDistCov:
                 axis=1
             )
 
-        ## 3 weeks
+        # 3 weeks
         # get composite
         df['composite_3w'] = (df[closure_vars] * weights).sum(axis=1)
 
@@ -281,7 +252,7 @@ class SocialDistCov:
                   + ['composite_1w', 'composite_2w', 'composite_3w']]
 
     # FIXME: mutable default
-    def get_cov_df(self, weights: Union[List[int], List[float], np.ndarray] = [1, 1, 1], k: int = 20, 
+    def get_cov_df(self, weights: Union[List[int], List[float], np.ndarray] = [1, 1, 1], k: int = 20,
                    empirical_weight_source: str = None, R0_file: str = None):
         # get composites
         if empirical_weight_source in ['google', 'descartes', 'safegraph']:
@@ -290,12 +261,12 @@ class SocialDistCov:
             df = self._calc_peak_date(empirical_weight_source, R0_file)
         else:
             df = self._calc_composite_explicit_weights(weights)
-        
+
         # scale to Wuhan
         if 'cov_1w' not in df.columns:
-            wuhan_score_1w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_1w'].item()
-            wuhan_score_2w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_2w'].item()
-            wuhan_score_3w = df.loc[df['Location'] == 'Wuhan City, Hubei', 'composite_3w'].item()
+            wuhan_score_1w = df.loc[df['Location'] == 'Wuhan', 'composite_1w'].item()
+            wuhan_score_2w = df.loc[df['Location'] == 'Wuhan', 'composite_2w'].item()
+            wuhan_score_3w = df.loc[df['Location'] == 'Wuhan', 'composite_3w'].item()
             df['cov_1w'] = (df['composite_1w'] + k) / (wuhan_score_1w + k)
             df['cov_2w'] = (df['composite_2w'] + k) / (wuhan_score_2w + k)
             df['cov_3w'] = (df['composite_3w'] + k) / (wuhan_score_3w + k)
