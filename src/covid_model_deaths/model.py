@@ -8,6 +8,7 @@ from curvefit.pipelines.ap_model import APModel
 from curvefit.core.functions import ln_gaussian_cdf, ln_gaussian_pdf
 from curvefit.core.utils import truncate_draws, convex_combination, process_input
 import dill as pickle
+from loguru import logger
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
@@ -618,6 +619,7 @@ def run_death_models():
     np.random.seed(model_seed)
     # AP model for data poor
     if len(df.loc[df['location_id'] == f'_{args.model_location_id}']) < DATA_THRESHOLD:
+        logger.info('Running data poor model')
         # or df.loc[df['location_id'] == f'_{args.model_location_id}', 'Deaths'].max() < 5:
         #
         # are we using a beta or gamma covariate
@@ -639,8 +641,8 @@ def run_death_models():
             fix_day=fix_day
         )
         model = 'AP'
-    # AP model for data poor
-    else:
+    else: # AP model for data rich
+        logger.info('Running data rich model.')
         tight_model, draws = ap_flat_asym_model(
             df=df[['location_id', 'intercept', 'Days', 'pseudo', 'ln(age-standardized death rate)', COVARIATE]],
             model_location=f'_{args.model_location_id}',
@@ -667,16 +669,19 @@ def run_death_models():
     df[['location_id', 'intercept', 'Days', 'pseudo', 'ln(age-standardized death rate)', COVARIATE]].to_csv(f'{args.output_dir}/data.csv', index=False)
     # loose
     if model == 'AP':
+        logger.info('Writing loose models.')
         with open(f'{args.output_dir}/loose_models.pkl', 'wb') as fwrite:
             pickle.dump(loose_model.models, fwrite, -1)
         with open(f'{args.output_dir}/loose_model_fit_dict.pkl', 'wb') as fwrite:
             pickle.dump(loose_model.fit_dict, fwrite, -1)
     # tight
+    logger.info('Writing tight models')
     with open(f'{args.output_dir}/tight_models.pkl', 'wb') as fwrite:
         pickle.dump(tight_model.models, fwrite, -1)
     with open(f'{args.output_dir}/tight_model_fit_dict.pkl', 'wb') as fwrite:
         pickle.dump(tight_model.fit_dict, fwrite, -1)
     # subset draws
+    logger.info('Writing draws')
     with open(f'{args.output_dir}/draws.pkl', 'wb') as fwrite:
         pickle.dump(subset_draws, fwrite, -1)
 
@@ -685,6 +690,7 @@ def run_death_models():
         model_instance = None
     else:
         model_instance = tight_model
+    logger.info('Writing model fit plots.')
     with PdfPages(f'{args.output_dir}/model_fits.pdf') as pdf:
         for location in tight_model.models.keys():
             location_name = df.loc[df['location_id'] == location, 'Location'].values[0]
