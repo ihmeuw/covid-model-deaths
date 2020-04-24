@@ -110,7 +110,7 @@ def save_plots(in_path: str, out_dir: str, loc_table: pd.DataFrame, show: bool =
     # TODO: Don't do I/O here.
     draw_df = pd.read_csv(in_path)
     draw_df['date'] = draw_df['date'].map(pd.Timestamp)
-    if(agg):
+    if agg:
         plot_aggregate(draw_df)
     # Iterate through locations in the input dataset
     for location_id in draw_df.location_id.unique():
