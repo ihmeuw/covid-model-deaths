@@ -1,26 +1,20 @@
-import os
-import sys
 import argparse
-
 from copy import deepcopy
-import dill as pickle
-
 import hashlib
-import math
-from scipy import stats
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
+import warnings
 
 from curvefit.pipelines.flat_asymmetric_model import APFlatAsymmetricModel
 from curvefit.pipelines.ap_model import APModel
-from curvefit.core.functions import ln_gaussian_cdf, ln_gaussian_pdf, gaussian_cdf, gaussian_pdf
-from curvefit.core.utils import (get_obs_se, local_smoother, df_to_mat,
-                                 truncate_draws, data_translator, convex_combination,
-                                 get_obs_se, process_input)
+from curvefit.core.functions import ln_gaussian_cdf, ln_gaussian_pdf
+from curvefit.core.utils import truncate_draws, convex_combination, process_input
+import dill as pickle
+from loguru import logger
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import numpy as np
+import pandas as pd
 
-import warnings
+
 warnings.filterwarnings('ignore')
 
 RATE_THRESHOLD = -15  # should pass this in as argument
@@ -104,7 +98,7 @@ def ap_model(df, model_location, location_cov, n_draws,
         }
     )
 
-    # draw related paramters
+    # draw related parameters
     draw_dict = dict(
         n_draws=n_draws,
         prediction_times = np.arange(pred_days),
@@ -122,8 +116,8 @@ def ap_model(df, model_location, location_cov, n_draws,
 
     # for prediction of places with no data
     alpha_times_beta = np.exp(0.7)
-    obs_bounds = [30, np.inf] # filter the data rich models
-    predict_cov = np.array([1.0, location_cov, 1.0]) # new covariates for the places.
+    obs_bounds = [30, np.inf]  # filter the data rich models
+    predict_cov = np.array([1.0, location_cov, 1.0])  # new covariates for the places.
 
     # tight prior control panel
     tight_info_dict = {
@@ -166,9 +160,9 @@ def ap_model(df, model_location, location_cov, n_draws,
     df = process_input(df, 'location_id', 'days', 'Age-standardized death rate',
                        col_covs=[COVARIATE, 'intercept', 'obs_se_tight', 'obs_se_loose'])
 
-    ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
-    ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
-    ## RUN MODEL
+    #############
+    # RUN MODEL #
+    #############
     # set up last info
     if fix_point is not None:
         last_info = {model_location:[fix_day, fix_point]}
@@ -211,8 +205,8 @@ def ap_model(df, model_location, location_cov, n_draws,
     combined_draws = {}
     for group in tight_draws.keys():
         draws = convex_combination(np.arange(tight_draws[group][1].shape[1]),
-                                   tight_draws[group][1][np.argsort(tight_draws[group][1][:,-1]),:],
-                                   loose_draws[group][1][np.argsort(loose_draws[group][1][:,-1]),:],
+                                   tight_draws[group][1][np.argsort(tight_draws[group][1][:, -1]), :],
+                                   loose_draws[group][1][np.argsort(loose_draws[group][1][:, -1]), :],
                                    basic_info_dict['predict_space'],
                                    start_day=start_day,
                                    end_day=end_day)
@@ -278,8 +272,8 @@ def ap_model(df, model_location, location_cov, n_draws,
         last_obs_space=loose_info_dict['fun']
     )
     draws = convex_combination(np.arange(overall_tight_draws.shape[1]),
-                               overall_tight_draws[np.argsort(overall_tight_draws[:,-1]),:],
-                               overall_loose_draws[np.argsort(overall_loose_draws[:,-1]),:],
+                               overall_tight_draws[np.argsort(overall_tight_draws[:, -1]), :],
+                               overall_loose_draws[np.argsort(overall_loose_draws[:, -1]), :],
                                basic_info_dict['predict_space'],
                                start_day=start_day,
                                end_day=end_day)
@@ -394,6 +388,14 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
         'bounds': gm_bounds
     }
 
+    # set bounds on Gaussian mixture weights
+    gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
+    gm_bounds[-1] = [0.18, 4.]
+    gm_bounds = np.vstack([gm_bounds, [[0, np.inf]]])  # add bounds on sum of weights
+    gm_fit_dict = {
+        'bounds': gm_bounds
+    }
+
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
     ## RUN MODEL
@@ -499,26 +501,26 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
                           color='dodgerblue', alpha=0.25)
     ax[1, 0].set_ylabel('deaths')
     ax[1, 0].set_xlim(0, draw[0].max())
-    ax[1, 0].set_ylim(0, np.quantile(np.exp(draw[1])*population, 0.975, axis=0).max()*1.1)
+    ax[1, 0].set_ylim(0, np.quantile(np.exp(draw[1])*population, 0.975, axis=0).max() * 1.1)
     ax[1, 0].set_xlabel('days')
-
 
     # daily deaths
     ax[1, 1].scatter(tm.t[1:], np.exp(tm.obs)[1:]*population - np.exp(tm.obs)[:-1]*population,
                      c='dodgerblue', edgecolors='navy')
-    ax[1, 1].plot(draw[0][1:], (np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population).mean(axis=0),
+    ax[1, 1].plot(draw[0][1:], (np.exp(draw[1])[:, 1:]*population - np.exp(draw[1])[:, :-1]*population).mean(axis=0),
                   color='dodgerblue')
     ax[1, 1].plot(tight_curve_t[1:], np.exp(tight_curve)[1:]*population - np.exp(tight_curve)[:-1]*population,
                   color='forestgreen')
     ax[1, 1].plot(loose_curve_t[1:], np.exp(loose_curve)[1:]*population - np.exp(loose_curve)[:-1]*population,
                   color=loose_color)
     ax[1, 1].fill_between(draw[0][1:],
-                          np.quantile(np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population, 0.025, axis=0),
-                          np.quantile(np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population, 0.975, axis=0),
+                          np.quantile(np.exp(draw[1])[:, 1:]*population
+                                      - np.exp(draw[1])[:, :-1]*population, 0.025, axis=0),
+                          np.quantile(np.exp(draw[1])[:, 1:]*population
+                                      - np.exp(draw[1])[:, :-1]*population, 0.975, axis=0),
                           color='dodgerblue', alpha=0.25)
     ax[1, 1].set_ylabel('daily deaths')
     ax[1, 1].set_xlim(0, draw[0].max())
-    #ax[1, 1].set_ylim(0, np.quantile(np.exp(draw[1])[:,1:]*population - np.exp(draw[1])[:,:-1]*population, 0.975, axis=0).max()*1.1)
     ax[1, 1].set_xlabel('days')
 
     plt.suptitle(f'{location_name} - SD cov: {np.round(covariate_val, 2)}', y=1.00025)
@@ -580,7 +582,6 @@ def run_death_models():
     df = pd.merge(df, cov_df[['location_id', COVARIATE]], how='left')
     if df[COVARIATE].isnull().any():
         missing_locs = df.loc[df[COVARIATE].isnull(), 'Location'].unique().tolist()
-        #raise ValueError(f'The following locations are missing covariates: {", ".join(missing_locs)}')
         print(f'The following locations are missing covariates: {", ".join(missing_locs)}')
         df = df.loc[~df[COVARIATE].isnull()]
     df = df.sort_values(['location_id', 'Days']).reset_index(drop=True)  # 'Country/Region',
@@ -618,6 +619,7 @@ def run_death_models():
     np.random.seed(model_seed)
     # AP model for data poor
     if len(df.loc[df['location_id'] == f'_{args.model_location_id}']) < DATA_THRESHOLD:
+        logger.info('Running data poor model')
         # or df.loc[df['location_id'] == f'_{args.model_location_id}', 'Deaths'].max() < 5:
         #
         # are we using a beta or gamma covariate
@@ -639,8 +641,8 @@ def run_death_models():
             fix_day=fix_day
         )
         model = 'AP'
-    # AP model for data poor
-    else:
+    else: # AP model for data rich
+        logger.info('Running data rich model.')
         tight_model, draws = ap_flat_asym_model(
             df=df[['location_id', 'intercept', 'Days', 'pseudo', 'ln(age-standardized death rate)', COVARIATE]],
             model_location=f'_{args.model_location_id}',
@@ -662,21 +664,24 @@ def run_death_models():
                 model_label: draws[model_label]
             })
 
-    ## store outputs
+    # store outputs
     # data
     df[['location_id', 'intercept', 'Days', 'pseudo', 'ln(age-standardized death rate)', COVARIATE]].to_csv(f'{args.output_dir}/data.csv', index=False)
     # loose
     if model == 'AP':
+        logger.info('Writing loose models.')
         with open(f'{args.output_dir}/loose_models.pkl', 'wb') as fwrite:
             pickle.dump(loose_model.models, fwrite, -1)
         with open(f'{args.output_dir}/loose_model_fit_dict.pkl', 'wb') as fwrite:
             pickle.dump(loose_model.fit_dict, fwrite, -1)
     # tight
+    logger.info('Writing tight models')
     with open(f'{args.output_dir}/tight_models.pkl', 'wb') as fwrite:
         pickle.dump(tight_model.models, fwrite, -1)
     with open(f'{args.output_dir}/tight_model_fit_dict.pkl', 'wb') as fwrite:
         pickle.dump(tight_model.fit_dict, fwrite, -1)
     # subset draws
+    logger.info('Writing draws')
     with open(f'{args.output_dir}/draws.pkl', 'wb') as fwrite:
         pickle.dump(subset_draws, fwrite, -1)
 
@@ -685,6 +690,7 @@ def run_death_models():
         model_instance = None
     else:
         model_instance = tight_model
+    logger.info('Writing model fit plots.')
     with PdfPages(f'{args.output_dir}/model_fits.pdf') as pdf:
         for location in tight_model.models.keys():
             location_name = df.loc[df['location_id'] == location, 'Location'].values[0]

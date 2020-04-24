@@ -1,5 +1,7 @@
 import pandas as pd
 
+from covid_model_deaths.globals import COLUMNS
+
 INDEX_COLUMNS = ['location_id', 'location', 'date', 'observed']
 DRAW_COLUMNS = [f'draw_{i}' for i in range(1000)]
 
@@ -31,7 +33,11 @@ def get_latest_data_date(today_data: pd.DataFrame) -> pd.Series:
 
 def get_daily_predicted(data: pd.DataFrame, latest_data_date: pd.Series) -> pd.DataFrame:
     """Get the subset of predicted data corresponding to the latest data date."""
-    data = data.set_index('location_id')
+    # Subset the prediction to the locations shared by the current
+    # dataset and the past datasets.
+    data = data[data[COLUMNS.location_id].isin(latest_data_date.index)]
+    data = data.set_index(COLUMNS.location_id)
+    
     # Broadcast latest data date over the location index.
     min_date = latest_data_date.loc[data.index]
     # Get the current data data for the dataset so that we can compute the
