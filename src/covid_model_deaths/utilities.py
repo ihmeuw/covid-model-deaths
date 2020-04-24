@@ -17,10 +17,10 @@ MOBILITY_SOURCES = ['google', 'descartes', 'safegraph']
 # TODO: Don't know what this is at all.
 KS = [21]  # 14,
 # TODO: use drmaa and a job template.
-QSUB_STR = 'qsub -N {job_name} -P proj_covid -q all.q -b y -l m_mem_free=8G -l fthread=3 '\
-           '-o /share/temp/sgeoutput/covid_deaths/output/ '\
-           '-e /share/temp/sgeoutput/covid_deaths/errors/ '\
-           '{python} {code_dir}/model.py '\
+QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=8G -l fthread=3 '\
+           '-o /share/temp/sgeoutput/covid/output/ '\
+           '-e /share/temp/sgeoutput/covid/errors/ '\
+           '{python} {model_file} '\
            '--model_location_id {model_location_id} --data_file {data_file} '\
            '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} '\
            '--last_day_file {last_day_file} --covariate_effect {covariate_effect} --n_draws={n_draws}'
@@ -28,14 +28,14 @@ QSUB_STR = 'qsub -N {job_name} -P proj_covid -q all.q -b y -l m_mem_free=8G -l f
 RATE_THRESHOLD = -15
 
 
-def submit_curvefit(job_name: str, location_id: int, code_dir: str,
+def submit_curvefit(job_name: str, location_id: int, model_file: str,
                     model_location_id: int, data_file: str, cov_file: str, last_day_file: str,
                     peaked_file: str, output_dir: str, covariate_effect: str, n_draws: int, python: str,
                     verbose: bool = False):
     qsub_str = QSUB_STR.format(
         job_name=job_name,
         location_id=location_id,
-        code_dir=code_dir,
+        model_file=model_file,
         python=python,
         model_location_id=model_location_id,
         last_day_file=sanitize(last_day_file),
@@ -55,7 +55,8 @@ def submit_curvefit(job_name: str, location_id: int, code_dir: str,
             print("Job submission failed. Retrying in 30 seconds...")
             print("Please try running qstat.")
             time.sleep(30)
-    print(job_str)
+    if verbose:
+        print(job_str)
 
 
 def sanitize(shell_string):

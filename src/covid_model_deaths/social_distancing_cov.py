@@ -65,10 +65,10 @@ class SocialDistCov:
         # rest of data
         df.loc[df['Country/Region'].isnull(), 'Country/Region'] = df['Location']
         df.loc[df['Country/Region'] == 'USA', 'Country/Region'] = 'United States of America'
-        df = df.loc[~(df['location_id'].isnull()) &
-                    ~(df['Location'].isnull()) &
+        df = df.loc[~(df['location_id'].isnull()) & 
+                    ~(df['Location'].isnull()) & 
                     ~(df['Country/Region'].isnull())]
-
+        
         # just keep location_id as identifier
         df = df[['location_id'] + self.closure_cols]
         df['location_id'] = df['location_id'].astype(int)

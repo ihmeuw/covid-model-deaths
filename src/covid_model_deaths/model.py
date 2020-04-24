@@ -378,6 +378,14 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     #     n_b = 13
     # print(f'basis functions: {n_b}')
     n_b = 13
+    
+    # set bounds on Gaussian mixture weights
+    gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
+    gm_bounds[-1] = [0.18, 4.]
+    gm_bounds = np.vstack([gm_bounds, [[0, np.inf]]])  # add bounds on sum of weights
+    gm_fit_dict = {
+        'bounds': gm_bounds
+    }
 
     # set bounds on Gaussian mixture weights
     gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)

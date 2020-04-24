@@ -5,6 +5,7 @@ GBD_REPORTING_LOCATION_SET_ID = 35
 GBD_2017_ROUND_ID = 6
 
 
+MOBILITY_SOURCES = ['google', 'descartes', 'safegraph']
 # TODO: Document better.  These are about the mix of social distancing
 #  covariates.
 COV_SETTINGS = [('equal', [1, 1, 1]),
@@ -33,7 +34,7 @@ class _Locations(NamedTuple):
 
 
 
-LOCATIONS = _Locations
+LOCATIONS = _Locations()
 
 
 class _Columns(NamedTuple):
@@ -44,19 +45,23 @@ class _Columns(NamedTuple):
     location_name: str = 'location_name'
     country: str = 'Country/Region'
     state: str = 'Province/State'
+    level: str = 'level'
 
     date: str = 'Date'
     days: str = 'Days'
+    last_day: str = 'last_day'
     threshold_date: str = 'threshold_date'
 
     population: str = 'population'
 
     deaths: str = 'Deaths'
     death_rate: str = 'Death rate'
-    ln_death_rate: str = 'ln(age-standardized death rate)'
+    ln_age_death_rate: str = 'ln(age-standardized death rate)'
+    ln_death_rate: str = 'ln(death rate)'
 
     confirmed: str = 'Confirmed'
     confirmed_case_rate: str = 'Confirmed case rate'
 
+    pseudo: str = 'pseudo'
 
 COLUMNS = _Columns()
