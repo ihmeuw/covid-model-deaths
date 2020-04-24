@@ -1,19 +1,14 @@
+from datetime import timedelta
 from typing import NamedTuple
-
-from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import seaborn as sns
-
-sns.set_style('whitegrid')
-
 import numpy as np
 import pandas as pd
+import seaborn as sns
 
 
-# pd.options.display.max_columns = 9999
-# pd.options.display.max_rows = 9999
+sns.set_style('whitegrid')
 
 
 class _Measures(NamedTuple):
@@ -56,6 +51,9 @@ def get_input_data(measure: str, data_version: str = 'best') -> pd.DataFrame:
         df['date'] = pd.to_datetime(df['date'])
     elif 'Date' in df.columns:
         df['Date'] = pd.to_datetime(df['Date'])
+    
+    if 'location_id' in df.columns:
+        df['location_id'] = df['location_id'].astype(int)
 
     return df
 
@@ -133,20 +131,16 @@ class DeathModelData:
         # restrict subnat if needed
         if subnat:
             # this logic should be sound...?
-            print('Only using admin1 and below locations')
             df = df.loc[df['Location'] != df['Country/Region']].reset_index(drop=True)
 
-        print('Dropping Outside Wuhan City, Hubei')
         df = df.loc[df['Location'] != 'Outside Wuhan City, Hubei'].reset_index(drop=True)
 
-        print('Dropping Outside Hubei')
         df = df.loc[df['Location'] != 'Outside Hubei'].reset_index(drop=True)
 
         # make sure we don't have naming problem
         # TODO: Check preconditions on data sets well before this.  Use
         #  proper errors.
-        assert (len(df[['Location']].drop_duplicates())
-                == len(df[['location_id']].drop_duplicates())
+        assert (len(df[['location_id']].drop_duplicates())
                 == len(df[['Country/Region', 'Location']].drop_duplicates())
                 == len(df[['location_id', 'Country/Region', 'Location']].drop_duplicates())), (
             'Location, location_id, Country/Region + Location, and location_id + Country/Region + Location '
@@ -166,7 +160,6 @@ class DeathModelData:
         df = df.merge(implied_df)
 
         # age-standardize
-        print(f'Standardizing to population of {standardize_location_id}')
         df['Age-standardized death rate'] = df.apply(
             lambda x: self.get_asdr(
                 x['Death rate'],
@@ -216,7 +209,7 @@ class DeathModelData:
         del df['Delta ln(asdr)']
 
         # fill in missing days and smooth
-        loc_df_list = [df.loc[df['location_id'] == l] for l in df['location_id'].unique()]
+        loc_df_list = [df.loc[df['location_id'] == loc_id] for loc_id in df['location_id'].unique()]
         df = pd.concat([self._moving_average_lnasdr(loc_df) for loc_df in loc_df_list]).reset_index(drop=True)
 
         ###############################
@@ -258,7 +251,6 @@ class DeathModelData:
         delta_df = (delta_df
                     .groupby(['location_id', 'Country/Region', 'Location'], as_index=False)['Delta ln(asdr)']
                     .mean())
-        print('Fix backcasting if we change nursing home observations (drop by name).')
         delta_df = delta_df.loc[(delta_df['Delta ln(asdr)'] > 1e-4) &
                                 (~delta_df['Location'].isin(['Life Care Center, Kirkland, WA']))]
         bc_location_ids = delta_df['location_id'].to_list()
@@ -299,8 +291,7 @@ class DeathModelData:
             # day) no longer add date, since we have partial days
             if df['Days'].min() != 0:
                 raise ValueError(f'First day is not 0, as expected... (location_id: {location_id})')
-            bc_df['Days'] = -(bc_df.index) - (start_rep - bc_rates[-1]) / bc_step
-            # bc_df['Date'] = [df['Date'].min() - timedelta(days=x+1) for x in range(len(bc_df))]
+            bc_df['Days'] = -bc_df.index - (start_rep - bc_rates[-1]) / bc_step
 
             # don't project more than 10 days back, or we will have PROBLEMS
             bc_df = (bc_df
@@ -332,12 +323,12 @@ class DeathModelData:
 
         # FIXME: Shadowing variable from outer scope.  Make a separate
         #  function.
-        def moving_3day_avg(day, df):
+        def moving_3day_avg(day, data):
             # determine difference
             days = np.array([day-1, day, day+1])
             days = days[days >= 0]
-            days = days[days <= df['Days'].max()]
-            avg = df.loc[df['Days'].isin(days), 'ln(age-standardized death rate)'].mean()
+            days = days[days <= data['Days'].max()]
+            avg = data.loc[data['Days'].isin(days), 'ln(age-standardized death rate)'].mean()
 
             return avg
 

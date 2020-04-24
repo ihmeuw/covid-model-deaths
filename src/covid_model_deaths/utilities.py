@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import time
 from typing import List, Optional, Tuple
 
@@ -16,27 +17,26 @@ MOBILITY_SOURCES = ['google', 'descartes', 'safegraph']
 # TODO: Don't know what this is at all.
 KS = [21]  # 14,
 # TODO: use drmaa and a job template.
-QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=6G -l fthread=3 '\
-           '-o /share/temp/sgeoutput/covid_deaths/output/ '\
-           '-e /share/temp/sgeoutput/covid_deaths/errors/ '\
-           '{python} {code_dir}/model.py '\
-           '--model_location {model_location} --model_location_id {model_location_id} --data_file {data_file} '\
+QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=12G -l fthread=3 '\
+           '-o /share/temp/sgeoutput/covid/output/ '\
+           '-e /share/temp/sgeoutput/covid/errors/ '\
+           '{python} {model_file} '\
+           '--model_location_id {model_location_id} --data_file {data_file} '\
            '--cov_file {cov_file} --peaked_file {peaked_file} --output_dir {output_dir} '\
            '--last_day_file {last_day_file} --covariate_effect {covariate_effect} --n_draws={n_draws}'
 # FIXME: Defined in multiple places.
 RATE_THRESHOLD = -15
 
 
-def submit_curvefit(job_name: str, location_id: int, code_dir: str, model_location: str,
+def submit_curvefit(job_name: str, location_id: int, model_file: str,
                     model_location_id: int, data_file: str, cov_file: str, last_day_file: str,
                     peaked_file: str, output_dir: str, covariate_effect: str, n_draws: int, python: str,
                     verbose: bool = False):
     qsub_str = QSUB_STR.format(
         job_name=job_name,
         location_id=location_id,
-        code_dir=code_dir,
+        model_file=model_file,
         python=python,
-        model_location=sanitize(model_location),
         model_location_id=model_location_id,
         last_day_file=sanitize(last_day_file),
         covariate_effect=covariate_effect,
@@ -55,7 +55,8 @@ def submit_curvefit(job_name: str, location_id: int, code_dir: str, model_locati
             print("Job submission failed. Retrying in 30 seconds...")
             print("Please try running qstat.")
             time.sleep(30)
-    print(job_str)
+    if verbose:
+        print(job_str)
 
 
 def sanitize(shell_string):
@@ -192,17 +193,6 @@ class CompareModelDeaths:
                 )
                 ax[0].set_xlabel('Date')
                 ax[0].set_ylabel('Cumulative deaths')
-                # plt.fill_between(
-                #     alt_df.loc[alt_df['location'] == location, 'date'],
-                #     alt_df.loc[alt_df['location'] == location, 'val_lower'],
-                #     alt_df.loc[alt_df['location'] == location, 'val_upper'],
-                #     alpha=0.25, color='forestgreen'
-                # )
-                # plt.plot(
-                #     alt_df.loc[alt_df['location'] == location, 'date'],
-                #     alt_df.loc[alt_df['location'] == location, 'val_mean'],
-                #     color='forestgreen', label='new model/old data'
-                # )
 
                 # daily
                 ax[1].fill_between(
