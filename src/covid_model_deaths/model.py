@@ -387,6 +387,14 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
         'bounds': gm_bounds
     }
 
+    # set bounds on Gaussian mixture weights
+    gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
+    gm_bounds[-1] = [0.18, 4.]
+    gm_bounds = np.vstack([gm_bounds, [[0, np.inf]]])  # add bounds on sum of weights
+    gm_fit_dict = {
+        'bounds': gm_bounds
+    }
+
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
     ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
     ## RUN MODEL
@@ -579,7 +587,7 @@ def run_death_models():
 
     # encode location_id for more explicit str indexing in model
     df['location_id'] = '_' + df['location_id'].astype(str)
-    
+
     # add intercept
     df['intercept'] = 1.0
 

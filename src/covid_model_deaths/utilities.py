@@ -55,7 +55,8 @@ def submit_curvefit(job_name: str, location_id: int, model_file: str,
             print("Job submission failed. Retrying in 30 seconds...")
             print("Please try running qstat.")
             time.sleep(30)
-    print(job_str)
+    if verbose:
+        print(job_str)
 
 
 def sanitize(shell_string):

@@ -33,9 +33,8 @@ class Drawer:
 
     def _collect_draws(self, ensemble_dir, n_draws, peak_days=3):
         # read model outputs
-        while not os.path.exists(f'{ensemble_dir}/{self.location_id}/draws.pkl'):
-            print(f'    Waiting for {ensemble_dir}/{self.location_id}/draws.pkl...')
-            time.sleep(30)
+        if not os.path.exists(f'{ensemble_dir}/{self.location_id}/draws.pkl'):
+            raise ValueError
         if os.path.exists(f'{ensemble_dir}/{self.location_id}/loose_models.pkl'):
             with open(f'{ensemble_dir}/{self.location_id}/loose_models.pkl', 'rb') as fread:
                 models = pickle.load(fread)
@@ -182,9 +181,15 @@ class Drawer:
         ensemble_draws = []
         ensemble_past = []
         for ensemble_dir, n_draws in zip(self.ensemble_dirs, self.n_draws_list):
-            model_used, days, draws, past_pred = self._collect_draws(ensemble_dir, n_draws)
+            try:
+                model_used, days, draws, past_pred = self._collect_draws(ensemble_dir, n_draws)
+            except:
+                print("No draws in ", ensemble_dir, self.location_name, self.location_id)
+                continue
             ensemble_draws.append(draws)
             ensemble_past.append(past_pred)
+        if not ensemble_draws:
+            raise ValueError
         draws = np.vstack(ensemble_draws)
         past_pred = np.mean(ensemble_past, axis=0)
         ensemble_draws = dict(zip(self.ensemble_dirs, ensemble_draws))

@@ -51,6 +51,9 @@ def get_input_data(measure: str, data_version: str = 'best') -> pd.DataFrame:
         df['date'] = pd.to_datetime(df['date'])
     elif 'Date' in df.columns:
         df['Date'] = pd.to_datetime(df['Date'])
+    
+    if 'location_id' in df.columns:
+        df['location_id'] = df['location_id'].astype(int)
 
     return df
 
@@ -137,8 +140,7 @@ class DeathModelData:
         # make sure we don't have naming problem
         # TODO: Check preconditions on data sets well before this.  Use
         #  proper errors.
-        assert (len(df[['Location']].drop_duplicates())
-                == len(df[['location_id']].drop_duplicates())
+        assert (len(df[['location_id']].drop_duplicates())
                 == len(df[['Country/Region', 'Location']].drop_duplicates())
                 == len(df[['location_id', 'Country/Region', 'Location']].drop_duplicates())), (
             'Location, location_id, Country/Region + Location, and location_id + Country/Region + Location '

@@ -45,6 +45,7 @@ class _Columns(NamedTuple):
     location_name: str = 'location_name'
     country: str = 'Country/Region'
     state: str = 'Province/State'
+    level: str = 'level'
 
     date: str = 'Date'
     days: str = 'Days'
