@@ -33,7 +33,6 @@ class _Locations(NamedTuple):
     other_wa_counties: Location = Location(60407, 'Other Counties, WA')
 
 
-
 LOCATIONS = _Locations()
 
 
@@ -63,5 +62,6 @@ class _Columns(NamedTuple):
     confirmed_case_rate: str = 'Confirmed case rate'
 
     pseudo: str = 'pseudo'
+
 
 COLUMNS = _Columns()
