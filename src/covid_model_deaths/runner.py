@@ -6,7 +6,6 @@ from pathlib import Path
 import shutil
 from typing import Dict, List, Tuple
 
-from db_queries import get_location_metadata
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
