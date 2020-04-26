@@ -64,7 +64,6 @@ class DeathModelData:
 
         # get implied death rate based on "standard" population (using average
         # of all possible locations atm)
-        # attach to age pattern for scaling in asdr function
         standard_age_death_df = get_standard_age_death_df(age_death_df)
         location_to_standardize = age_pop_df[COLUMNS.location_id] == standardize_location_id
         age_pattern_df = age_pop_df.loc[location_to_standardize].merge(standard_age_death_df)
