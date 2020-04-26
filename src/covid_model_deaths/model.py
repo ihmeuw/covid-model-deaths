@@ -21,7 +21,7 @@ RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
 PSEUDO_SE = 5
-N_B = 29
+N_B = 13 # 29
 
 
 def get_hash(key: str) -> int:
@@ -375,12 +375,14 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     df = process_input(df, 'location_id', 'days', 'Age-standardized death rate',
                        col_covs=[COVARIATE, 'intercept', 'obs_se'])
 
-    # set number of basis functions based on data
+    # set number of basis functions
     n_b = N_B
     
-    # set bounds on Gaussian mixture weights
-    gm_bounds = np.repeat(np.array([[0, 2.]]), n_b, axis=0)
-    #gm_bounds[-1] = [0.18, 4.]
+    # set bounds on Gaussian mixture weights 
+    #   - with expanded mixture elements, set upper for each to 2 and don't have different
+    #     limits for final curve
+    gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
+    gm_bounds[-1] = [0.18, 4.]
     gm_bounds = np.vstack([gm_bounds, [[0, 10.]]])  # add bounds on sum of weights
     gm_fit_dict = {
         'bounds': gm_bounds
