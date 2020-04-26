@@ -13,7 +13,7 @@ class DeathModelData:
     # TODO: Pull out data processing separately from modeling.
     # TODO: rate threshold global.
     def __init__(self, df: pd.DataFrame, age_pop_df: pd.DataFrame, age_death_df: pd.DataFrame,
-                 standardize_location_id: int, model_type: str, subnat: bool = False,
+                 standardize_location_id: int, subnat: bool = False,
                  rate_threshold: int = -15):
         """
         Parameters
@@ -31,9 +31,6 @@ class DeathModelData:
         self.rate_threshold = rate_threshold
 
         # get model dataset
-        # TODO: remove the arg?
-        if model_type != 'threshold':
-            raise ValueError('Must set model type to be threshold.')
         df = df.sort_values(['Country/Region', 'Location', 'Date']).reset_index(drop=True)
 
         # restrict subnat if needed

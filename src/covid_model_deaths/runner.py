@@ -59,7 +59,6 @@ def backcast_deaths(location_id: int, death_df: pd.DataFrame,
                                  age_pop_df,
                                  age_death_df,
                                  location_id,
-                                 'threshold',
                                  subnat=subnat,
                                  rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
     mod_df = death_model.df
@@ -136,7 +135,7 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
         i += 1
         level = loc_df.set_index(COLUMNS.location_id).at[location_id, COLUMNS.level]
         subnat = not level == 0
-        mod = DeathModelData(death_df, age_pop_df, age_death_df, location_id, 'threshold',
+        mod = DeathModelData(death_df, age_pop_df, age_death_df, location_id,
                              subnat=subnat, rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
         if location_name in nursing_home_locations:
             # save only nursing homes
