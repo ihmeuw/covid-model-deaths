@@ -28,35 +28,6 @@ from covid_model_deaths.social_distancing_cov import SocialDistCov
 from covid_model_deaths.utilities import submit_curvefit, CompareModelDeaths
 
 
-class Checkpoint:
-
-    def __init__(self, output_dir: str):
-        self.checkpoint_dir = Path(output_dir) / 'checkpoint'
-        self.checkpoint_dir.mkdir(mode=0o775, exist_ok=True)
-        self.cache = {}
-
-    def write(self, key, data):
-        if key in self.cache:
-            logger.warning(f"Overwriting {key} in checkpoint data.")
-        self.cache[key] = data
-        with (self.checkpoint_dir / f"{key}.pkl").open('wb') as key_file:
-            pickle.dump(data, key_file, -1)
-
-    def load(self, key):
-        if key in self.cache:
-            logger.info(f'Loading {key} from in memory cache.')
-        elif (self.checkpoint_dir / f'{key}.pkl').exists():
-            logger.info(f'Reading {key} from checkpoint dir {self.checkpoint_dir}.')
-            with (self.checkpoint_dir / f"{key}.pkl").open('rb') as key_file:
-                self.cache[key] = pickle.load(key_file)
-        else:
-            raise ValueError(f'No checkpoint data found for {key}')
-        return self.cache[key]
-
-    def __repr__(self):
-        return f'Checkpoint({str(self.checkpoint_dir)})'
-
-
 def run_us_model(input_data_version: str,
                  peak_file: str,
                  cases_deaths_file: str,
@@ -188,7 +159,7 @@ def make_last_day_df(full_df: pd.DataFrame, date_mean_df: pd.DataFrame) -> pd.Da
                                      .groupby(COLUMNS.location_id, as_index=False)[COLUMNS.date]
                                      .transform(max))
     last_day_df = last_day_df.loc[last_day_df[COLUMNS.date] == last_day_df[COLUMNS.last_day]].reset_index(drop=True)
-    
+
     last_day_df[COLUMNS.location_id] = last_day_df[COLUMNS.location_id].astype(int)
     # TODO: Document whatever is happening here.
     last_day_df.loc[last_day_df[COLUMNS.death_rate] == 0, COLUMNS.death_rate] = 0.1 / last_day_df[COLUMNS.population]
@@ -202,7 +173,7 @@ def make_last_day_df(full_df: pd.DataFrame, date_mean_df: pd.DataFrame) -> pd.Da
 
 def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                   age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, case_deaths_df: pd.DataFrame,
-                  loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str, 
+                  loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str,
                   data_version: str, r0_file: str, code_dir: str, verbose: bool = False) -> Dict:
     submodel_dict = {}
     N = len(loc_df)
