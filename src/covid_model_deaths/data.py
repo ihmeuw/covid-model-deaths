@@ -7,11 +7,9 @@ from covid_model_deaths.globals import COLUMNS
 
 
 def process_death_df(death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
-    # get model dataset
-
+    """Subset and filter the death data."""
     death_df = death_df.sort_values([COLUMNS.country, COLUMNS.location, COLUMNS.date]).reset_index(drop=True)
 
-    # restrict subnat if needed
     if subnat:
         # FIXME: Faulty logic.  Use location hierarchy
         location_matches_country = death_df[COLUMNS.location] == death_df[COLUMNS.country]
@@ -21,9 +19,7 @@ def process_death_df(death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
     bad_location_data = death_df[COLUMNS.location].isin(bad_locations)
     death_df = death_df.loc[~bad_location_data].reset_index(drop=True)
 
-    # make sure we don't have naming problem
-    # TODO: Check preconditions on data sets well before this.  Use
-    #  proper errors.
+    # TODO: Check preconditions on data sets well before this.
     n_loc_ids = len(death_df[[COLUMNS.location_id]].drop_duplicates())
     n_country_locations = len(death_df[[COLUMNS.country, COLUMNS.location]].drop_duplicates())
     n_id_country_locations = len(death_df[[COLUMNS.location_id, COLUMNS.country, COLUMNS.location]].drop_duplicates())
