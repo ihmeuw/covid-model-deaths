@@ -21,7 +21,7 @@ RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
 PSEUDO_SE = 5
-N_B = 13 # 29
+N_B = 29
 
 
 def get_hash(key: str) -> int:
