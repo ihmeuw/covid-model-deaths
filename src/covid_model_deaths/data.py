@@ -86,7 +86,7 @@ class DeathModelData:
         # restrict subnat if needed
         if subnat:
             # this logic should be sound...?
-            df = df.loc[df['Location'] != df['Country/Region']].reset_index(drop=True)
+            df = df.loc[(df['Location'] != df['Country/Region']) | (df['location_id'] == 4657)].reset_index(drop=True)
 
         df = df.loc[df['Location'] != 'Outside Wuhan City, Hubei'].reset_index(drop=True)
 
