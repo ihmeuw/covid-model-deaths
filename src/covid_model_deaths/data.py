@@ -1,5 +1,4 @@
 from datetime import timedelta
-from typing import NamedTuple
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -11,52 +10,8 @@ import seaborn as sns
 sns.set_style('whitegrid')
 
 
-class _Measures(NamedTuple):
-    age_death: str = 'age_death'
-    age_pop: str = 'age_pop'
-    confirmed: str = 'confirmed'
-    deaths: str = 'deaths'
-    full_data: str = 'full_data'
-    us_pops: str = 'us_pops'
-
-
-MEASURES = _Measures()
-
 # FIXME: Lots of chained indexing which is error prone and makes pandas
 #  mad.
-
-
-def get_input_data(measure: str, data_version: str = 'best') -> pd.DataFrame:
-    """Loads in data for a particular measure and data version.
-
-    Parameters
-    ----------
-    measure
-        The measure to load in.  Should be one of :data:`MEASURES`.
-    data_version
-        The model input data version to use.  One of 'latest' or 'best'.
-        Defaults to 'best', which is the last production ready data set.
-
-    Returns
-    -------
-        The requested data set as a :class:`pd.DataFrame`.
-
-    """
-    if measure not in MEASURES:
-        raise ValueError(f'Invalid measure {measure} - valid measures are {", ".join(MEASURES)}')
-
-    df = pd.read_csv(f'/ihme/covid-19/model-inputs/{data_version}/{measure}.csv')
-
-    if 'date' in df.columns:
-        df['date'] = pd.to_datetime(df['date'])
-    elif 'Date' in df.columns:
-        df['Date'] = pd.to_datetime(df['Date'])
-    
-    if 'location_id' in df.columns:
-        df['location_id'] = df['location_id'].astype(int)
-
-    return df
-
 
 def plot_crude_rates(df: pd.DataFrame, level: str = None):
     """Plots crude (population level) rates."""

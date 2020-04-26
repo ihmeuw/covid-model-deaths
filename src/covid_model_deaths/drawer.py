@@ -1,11 +1,9 @@
 from datetime import datetime, timedelta
 import os
-import time
 
 import dill as pickle
 import numpy as np
 import pandas as pd
-from scipy.signal import resample
 
 
 class Drawer:
@@ -58,9 +56,6 @@ class Drawer:
             past_pred = np.array([])
 
         if n_draws != draws.shape[0]:
-            # if n_draws > draws.shape[0]:
-            #     raise ValueError('Specified number of draws greater than number of draws in data.')
-            # draws = resample(draws, n_draws, axis=0)
             raise ValueError('Specified nubmer of draws different from actual number of draws.')
 
         # expand out by peak duration of peak days
@@ -71,25 +66,25 @@ class Drawer:
 
     def _expand_peak(self, draws):
         # daily death rate space
-        delta_draws = np.exp(draws[:,1:]) - np.exp(draws[:,:-1])
+        delta_draws = np.exp(draws[:, 1:]) - np.exp(draws[:, :-1])
 
         # find max of mean
         peak_idx = np.argmax(delta_draws.mean(axis=0))
 
         # expand that and stick into array (cutting off end to match expected length)
-        peak = np.repeat(delta_draws[:,[peak_idx]], self.peak_duration, axis=1)
+        peak = np.repeat(delta_draws[:, [peak_idx]], self.peak_duration, axis=1)
         if peak_idx == 0:
             delta_draws = np.hstack([peak,
-                                     delta_draws[:,1:-(self.peak_duration-1)]])
+                                     delta_draws[:, 1:-(self.peak_duration-1)]])
         else:
-            delta_draws = np.hstack([delta_draws[:,:peak_idx],
+            delta_draws = np.hstack([delta_draws[:, :peak_idx],
                                      peak,
-                                     delta_draws[:,peak_idx+1:-(self.peak_duration-1)]])
+                                     delta_draws[:, peak_idx+1:-(self.peak_duration-1)]])
 
         # stick back on first obs, get cumulative, and convert back into log
         draws = np.log(
             np.hstack(
-                [np.exp(draws[:,[0]]), delta_draws]
+                [np.exp(draws[:, [0]]), delta_draws]
             ).cumsum(axis=1)
         )
 
