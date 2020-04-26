@@ -17,8 +17,9 @@ import tqdm
 import yaml
 
 import covid_model_deaths
+from covid_model_deaths.deaths_io import InputsContext, MEASURES, Checkpoint
 from covid_model_deaths.compare_moving_average import CompareAveragingModelDeaths
-from covid_model_deaths.data import get_input_data, plot_crude_rates, DeathModelData
+from covid_model_deaths.data import plot_crude_rates, DeathModelData
 from covid_model_deaths.drawer import Drawer
 from covid_model_deaths.impute_death_threshold import impute_death_threshold as impute_death_threshold_
 import covid_model_deaths.globals as cmd_globals
@@ -38,11 +39,12 @@ def run_us_model(input_data_version: str,
                  yesterday_draw_path: str,
                  before_yesterday_draw_path: str,
                  previous_average_draw_path: str) -> None:
-    full_df = get_input_data('full_data', input_data_version)
-    death_df = get_input_data('deaths', input_data_version)
-    age_pop_df = get_input_data('age_pop', input_data_version)
-    age_death_df = get_input_data('age_death', input_data_version)
-    get_input_data('us_pops').to_csv(f'{output_path}/pops.csv', index=False)
+    inputs = InputsContext(f'/ihme/covid-19/measure-data/{input_data_version}')
+    loc_df = get_locations(LOCATION_SET_VERSION)
+    input_full_df = filter_data(inputs.load(MEASURES.full_data))
+    input_death_df = filter_data(inputs.load(MEASURES.deaths), kind='deaths')
+    input_age_pop_df = inputs.load(MEASURES.age_pop)
+    input_age_death_df = inputs.load(MEASURES.age_death)
 
     backcast_output_path = f'{output_path}/backcast_for_case_to_death.csv'
     threshold_dates_output_path = f'{output_path}/threshold_dates.csv'
