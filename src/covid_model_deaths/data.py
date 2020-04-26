@@ -38,6 +38,40 @@ def get_standard_age_death_df(age_death_df: pd.DataFrame) -> pd.DataFrame:
     return age_death_df.loc[global_loc, keep_columns].reset_index(drop=True)
 
 
+def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int,
+                                              bc_step: int, rate_threshold: float) -> pd.DataFrame:
+    """Backcast the log age standardized death rate back to the rate threshold."""
+    out_columns = [COLUMNS.location_id, COLUMNS.days, COLUMNS.ln_age_death_rate]
+    # get first point
+    start_rep = df.sort_values(COLUMNS.days).reset_index(drop=True)[COLUMNS.ln_age_death_rate][0]
+
+    if start_rep > rate_threshold:  # backcast
+        # count from threshold on
+        bc_rates = np.arange(rate_threshold, start_rep, bc_step)
+        bc_df = pd.DataFrame({
+            COLUMNS.location_id: location_id,
+            COLUMNS.ln_age_death_rate: np.flip(bc_rates)
+        })
+
+        # remove fractional step from last (we force the threshold day to
+        # be 0, so the partial day ends up getting added onto the first
+        # day) no longer add date, since we have partial days
+        if df[COLUMNS.days].min() != 0:
+            raise ValueError(f'First day is not 0, as expected... (location_id: {location_id})')
+        bc_df[COLUMNS.days] = -bc_df.index - (start_rep - bc_rates[-1]) / bc_step
+
+        # don't project more than 10 days back, or we will have PROBLEMS
+        bc_df = (bc_df
+                 .loc[bc_df[COLUMNS.days] >= -10, out_columns]
+                 .reset_index(drop=True))
+    elif start_rep == rate_threshold:
+        bc_df = pd.DataFrame(columns=out_columns)
+    else:
+        raise ValueError('First value is below threshold, should not be possible.')
+
+    return bc_df
+
+
 class DeathModelData:
     """Wrapper class that does mortality rate backcasting."""
 
@@ -169,9 +203,12 @@ class DeathModelData:
                                 (~delta_df['Location'].isin(['Life Care Center, Kirkland, WA']))]
         bc_location_ids = delta_df['location_id'].to_list()
         bc_df = pd.concat([
-            self._backcast_ln_asdr(bc_location_id,
-                                   df.loc[df['location_id'] == bc_location_id],
-                                   delta_df.loc[delta_df['location_id'] == bc_location_id, 'Delta ln(asdr)'].item())
+            backcast_log_age_standardized_death_ratio(
+                df.loc[df['location_id'] == bc_location_id],
+                bc_location_id,
+                delta_df.loc[delta_df['location_id'] == bc_location_id, 'Delta ln(asdr)'].item(),
+                self.rate_threshold,
+            )
             for bc_location_id in bc_location_ids
         ])
         df = df.append(bc_df)
@@ -185,37 +222,6 @@ class DeathModelData:
         del df['first_point']
 
         return df
-
-    def _backcast_ln_asdr(self, location_id: int, df: pd.DataFrame, bc_step: int) -> pd.DataFrame:
-        # get first point
-        start_rep = df.sort_values('Days').reset_index(drop=True)['ln(age-standardized death rate)'][0]
-
-        # backcast if above threshold (already dropped below, so other case
-        # is == threshold)
-        if start_rep > self.rate_threshold:
-            # count from threshold on
-            bc_rates = np.arange(self.rate_threshold, start_rep, bc_step)
-            bc_df = pd.DataFrame({
-                'location_id': location_id,
-                'ln(age-standardized death rate)': np.flip(bc_rates)
-            })
-
-            # remove fractional step from last  (we force the threshold day to
-            # be 0, so the partial day ends up getting added onto the first
-            # day) no longer add date, since we have partial days
-            if df['Days'].min() != 0:
-                raise ValueError(f'First day is not 0, as expected... (location_id: {location_id})')
-            bc_df['Days'] = -bc_df.index - (start_rep - bc_rates[-1]) / bc_step
-
-            # don't project more than 10 days back, or we will have PROBLEMS
-            bc_df = (bc_df
-                     .loc[bc_df['Days'] >= -10, ['location_id', 'Days', 'ln(age-standardized death rate)']]
-                     .reset_index(drop=True))
-        else:
-            assert start_rep == self.rate_threshold, 'First value is below threshold, should not be possible.'
-            bc_df = pd.DataFrame(columns=['location_id', 'Days', 'ln(age-standardized death rate)'])
-
-        return bc_df
 
     @staticmethod
     def get_asdr(true_rate, implied_rate, age_pattern_df: pd.DataFrame):
