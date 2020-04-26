@@ -17,8 +17,9 @@ import tqdm
 import yaml
 
 import covid_model_deaths
+from covid_model_deaths.deaths_io import InputsContext, MEASURES, Checkpoint
 from covid_model_deaths.compare_moving_average import CompareAveragingModelDeaths
-from covid_model_deaths.data import get_input_data, plot_crude_rates, DeathModelData
+from covid_model_deaths.data import plot_crude_rates, DeathModelData
 from covid_model_deaths.drawer import Drawer
 from covid_model_deaths.impute_death_threshold import impute_death_threshold as impute_death_threshold_
 import covid_model_deaths.globals as cmd_globals
@@ -26,35 +27,6 @@ from covid_model_deaths.globals import COLUMNS, LOCATIONS
 from covid_model_deaths.moving_average import moving_average_predictions
 from covid_model_deaths.social_distancing_cov import SocialDistCov
 from covid_model_deaths.utilities import submit_curvefit, CompareModelDeaths
-
-
-class Checkpoint:
-
-    def __init__(self, output_dir: str):
-        self.checkpoint_dir = Path(output_dir) / 'checkpoint'
-        self.checkpoint_dir.mkdir(mode=0o775, exist_ok=True)
-        self.cache = {}
-
-    def write(self, key, data):
-        if key in self.cache:
-            logger.warning(f"Overwriting {key} in checkpoint data.")
-        self.cache[key] = data
-        with (self.checkpoint_dir / f"{key}.pkl").open('wb') as key_file:
-            pickle.dump(data, key_file, -1)
-
-    def load(self, key):
-        if key in self.cache:
-            logger.info(f'Loading {key} from in memory cache.')
-        elif (self.checkpoint_dir / f'{key}.pkl').exists():
-            logger.info(f'Reading {key} from checkpoint dir {self.checkpoint_dir}.')
-            with (self.checkpoint_dir / f"{key}.pkl").open('rb') as key_file:
-                self.cache[key] = pickle.load(key_file)
-        else:
-            raise ValueError(f'No checkpoint data found for {key}')
-        return self.cache[key]
-
-    def __repr__(self):
-        return f'Checkpoint({str(self.checkpoint_dir)})'
 
 
 def run_us_model(input_data_version: str,
@@ -67,11 +39,12 @@ def run_us_model(input_data_version: str,
                  yesterday_draw_path: str,
                  before_yesterday_draw_path: str,
                  previous_average_draw_path: str) -> None:
-    full_df = get_input_data('full_data', input_data_version)
-    death_df = get_input_data('deaths', input_data_version)
-    age_pop_df = get_input_data('age_pop', input_data_version)
-    age_death_df = get_input_data('age_death', input_data_version)
-    get_input_data('us_pops').to_csv(f'{output_path}/pops.csv', index=False)
+    inputs = InputsContext(f'/ihme/covid-19/measure-data/{input_data_version}')
+    loc_df = get_locations(LOCATION_SET_VERSION)
+    input_full_df = filter_data(inputs.load(MEASURES.full_data))
+    input_death_df = filter_data(inputs.load(MEASURES.deaths), kind='deaths')
+    input_age_pop_df = inputs.load(MEASURES.age_pop)
+    input_age_death_df = inputs.load(MEASURES.age_death)
 
     backcast_output_path = f'{output_path}/backcast_for_case_to_death.csv'
     threshold_dates_output_path = f'{output_path}/threshold_dates.csv'
@@ -188,7 +161,7 @@ def make_last_day_df(full_df: pd.DataFrame, date_mean_df: pd.DataFrame) -> pd.Da
                                      .groupby(COLUMNS.location_id, as_index=False)[COLUMNS.date]
                                      .transform(max))
     last_day_df = last_day_df.loc[last_day_df[COLUMNS.date] == last_day_df[COLUMNS.last_day]].reset_index(drop=True)
-    
+
     last_day_df[COLUMNS.location_id] = last_day_df[COLUMNS.location_id].astype(int)
     # TODO: Document whatever is happening here.
     last_day_df.loc[last_day_df[COLUMNS.death_rate] == 0, COLUMNS.death_rate] = 0.1 / last_day_df[COLUMNS.population]
@@ -202,7 +175,7 @@ def make_last_day_df(full_df: pd.DataFrame, date_mean_df: pd.DataFrame) -> pd.Da
 
 def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                   age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, case_deaths_df: pd.DataFrame,
-                  loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str, 
+                  loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str,
                   data_version: str, r0_file: str, code_dir: str, verbose: bool = False) -> Dict:
     submodel_dict = {}
     N = len(loc_df)

@@ -50,18 +50,7 @@ class SocialDistCov:
     def _process_closure_dataset(self) -> pd.DataFrame:
         # load data, keep relevant rows/columns
         df = pd.read_excel(self.closure_sheet)
-        
-#         #hotfix for Miami and NYC
-#         nrep = df.loc[df['merge_name']=="New York"]
-#         nrep['merge_name'] = 'Outside of New York City'
-#         nrepp = df.loc[df['merge_name']=="New York"]
-#         nrepp['merge_name'] = 'New York City'
-#         frep = df.loc[df['merge_name'] =="Florida"]
-#         frep['merge_name'] = 'Miami'
-#         df = df.append(nrep)
-#         df = df.append(nrepp)
-#         df = df.append(frep)
-        
+
         # FIXME: there have been issues in the past with merge_name and
         #  country not being the same, such that the threshold merge fails.
         #  recognize this function's reliance on merge_name if debugging.
@@ -76,10 +65,10 @@ class SocialDistCov:
         # rest of data
         df.loc[df['Country/Region'].isnull(), 'Country/Region'] = df['Location']
         df.loc[df['Country/Region'] == 'USA', 'Country/Region'] = 'United States of America'
-        df = df.loc[~(df['location_id'].isnull()) & 
-                    ~(df['Location'].isnull()) & 
+        df = df.loc[~(df['location_id'].isnull()) &
+                    ~(df['Location'].isnull()) &
                     ~(df['Country/Region'].isnull())]
-        
+
         # just keep location_id as identifier
         df = df[['location_id'] + self.closure_cols]
         df['location_id'] = df['location_id'].astype(int)

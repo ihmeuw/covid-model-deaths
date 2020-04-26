@@ -14,22 +14,24 @@ if __name__ == "__main__":
         long_description = f.read()
 
     install_requirements = [
+        'covid-shared',
+        'dill',
+        'ipdb',
         'jupyter',
         'jupyterlab',
-        'ipdb',
-        'dill',
+        'loguru',
+        'matplotlib',
+        'numpy',
+        'openpyxl',
         'pandas',
+        'pyarrow',
+        'pyyaml',
+        'scipy',
+        'seaborn',
+        'sklearn',
         'tqdm',
         'xlrd',
-        'loguru',
-        'pyyaml',
-        'pyarrow',
-        'openpyxl',
-        'numpy',
-        'scipy',
-        'sklearn',
-        'matplotlib',
-        'seaborn',
+
         'db_queries',
         'curvefit @ git+https://github.com/ihmeuw-msca/CurveFit@product#egg=curvefit'
     ]
