@@ -26,6 +26,7 @@ class Location:
 
 
 class _Locations(NamedTuple):
+    global_aggregate: Location = Location(1, 'Global')
     usa: Location = Location(102, 'United States of America')
     washington: Location = Location(570, 'Washington')
     life_care: Location = Location(60406, 'Life Care Center, Kirkland, WA')
@@ -53,8 +54,11 @@ class _Columns(NamedTuple):
 
     population: str = 'population'
 
+    age_group: str = 'age_group'
+
     deaths: str = 'Deaths'
     death_rate: str = 'Death rate'
+    death_rate_bad: str = 'death_rate'
     ln_age_death_rate: str = 'ln(age-standardized death rate)'
     ln_death_rate: str = 'ln(death rate)'
 

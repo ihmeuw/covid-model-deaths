@@ -3,7 +3,7 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 
-from covid_model_deaths.globals import COLUMNS
+from covid_model_deaths.globals import COLUMNS, LOCATIONS
 
 
 def process_death_df(death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
@@ -29,6 +29,13 @@ def process_death_df(death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
             'are not all acceptable keys. I assume this is true, check why not.'
         )
     return death_df
+
+
+def get_standard_age_death_df(age_death_df: pd.DataFrame) -> pd.DataFrame:
+    """Compute or select the age death pattern."""
+    global_loc = age_death_df[COLUMNS.location_id] == LOCATIONS.global_aggregate.id
+    keep_columns = [COLUMNS.age_group, COLUMNS.death_rate_bad]
+    return age_death_df.loc[global_loc, keep_columns].reset_index(drop=True)
 
 
 class DeathModelData:
@@ -57,12 +64,12 @@ class DeathModelData:
 
         # get implied death rate based on "standard" population (using average
         # of all possible locations atm)
-        implied_df = (age_death_df
-                      .loc[age_death_df.location_id == 1, ['age_group', 'death_rate']]
-                      .reset_index(drop=True))
         # attach to age pattern for scaling in asdr function
-        self.age_pattern_df = age_pop_df.loc[age_pop_df.location_id == standardize_location_id].merge(implied_df)
-        implied_df = implied_df.merge(age_pop_df)
+        standard_age_death_df = get_standard_age_death_df(age_death_df)
+        location_to_standardize = age_pop_df[COLUMNS.location_id] == standardize_location_id
+        age_pattern_df = age_pop_df.loc[location_to_standardize].merge(standard_age_death_df)
+
+        implied_df = standard_age_death_df.merge(age_pop_df)
         implied_df['Implied death rate'] = implied_df['death_rate'] * implied_df['age_group_weight_value']
         implied_df = implied_df.groupby('location_id', as_index=False)['Implied death rate'].sum()
         df = df.merge(implied_df)
@@ -72,7 +79,7 @@ class DeathModelData:
             lambda x: self.get_asdr(
                 x['Death rate'],
                 x['Implied death rate'],
-                self.age_pattern_df),
+                age_pattern_df),
             axis=1)
         df['ln(age-standardized death rate)'] = np.log(df['Age-standardized death rate'])
 
@@ -214,7 +221,6 @@ class DeathModelData:
     @staticmethod
     def get_asdr(true_rate, implied_rate, age_pattern_df: pd.DataFrame):
         scaled_rate = age_pattern_df['death_rate'] * (true_rate / implied_rate)
-
         return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
 
     def _moving_average_lnasdr(self, df: pd.DataFrame) -> pd.DataFrame:
