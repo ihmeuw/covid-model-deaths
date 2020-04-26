@@ -470,7 +470,7 @@ class LeadingIndicator:
         return df
     
     def _combine_sources(self, df):
-        # only use hospital if it is up to date or 1 day behind
+        # only use hospital if it is up to date or 2 days behind
         if df['from_hospital'].isnull().sum() < 2:
             df = df.loc[~df['from_hospital'].isnull()]
             df['Death rate'] = df[['from_cases', 'from_hospital']].mean(axis=1)
