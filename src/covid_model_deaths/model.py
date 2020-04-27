@@ -22,6 +22,7 @@ COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
 PSEUDO_SE = 5
 N_B = 13 # 29
+PRED_DAYS = 150
 
 
 def get_hash(key: str) -> int:
@@ -41,7 +42,7 @@ def get_hash(key: str) -> int:
 
 def ap_model(df, model_location, location_cov, n_draws,
              peaked_groups, exclude_groups, fix_gamma, fix_point, fix_day,
-             pred_days=150):
+             pred_days=PRED_DAYS):
     # our dataset (rename days as model assumes it's lower case)
     df = df.copy()
     df = df.rename(index=str, columns={'Days':'days'})
@@ -292,7 +293,7 @@ def ap_model(df, model_location, location_cov, n_draws,
 
 
 def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_groups,
-                       fix_point, fix_day, pred_days=150):
+                       fix_point, fix_day, pred_days=PRED_DAYS):
     # our dataset (rename days as model assumes it's lower case)
     df = df.copy()
     df = df.rename(index=str, columns={'Days':'days'})
@@ -441,7 +442,7 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     return model, cumulative_draws
 
 
-def plot_location(location, location_name, covariate_val, tm, lm, model_instance, draw, population, pdf=None, pred_days=150):
+def plot_location(location, location_name, covariate_val, tm, lm, model_instance, draw, population, pdf=None, pred_days=PRED_DAYS):
     # get past curve point estimates
     tight_curve_t = np.arange(pred_days)
     tight_curve = tm.predict(tight_curve_t, group_name=location)
