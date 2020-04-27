@@ -131,9 +131,9 @@ def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFr
     df[COLUMNS.delta_ln_asdr][1:] = diff
 
     groupby_cols = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location]
-    df[COLUMNS.first_point] = df.groupby(groupby_cols, as_index=False).Days.transform('min')
+    df[COLUMNS.first_point] = df.groupby(groupby_cols, as_index=False)[COLUMNS.days].transform('min')
     df.loc[df[COLUMNS.days] == df[COLUMNS.first_point], COLUMNS.delta_ln_asdr] = np.nan
-    df[COLUMNS.last_point] = df.groupby(groupby_cols, as_index=False).Days.transform('max')
+    df[COLUMNS.last_point] = df.groupby(groupby_cols, as_index=False)[COLUMNS.days].transform('max')
     df = df.loc[~((df[COLUMNS.days] == df[COLUMNS.last_point]) & (df[COLUMNS.delta_ln_asdr] == 0))]
 
     # clean up (will add delta back after expanding)
@@ -206,7 +206,7 @@ def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFr
     fill_cols = [COLUMNS.location, COLUMNS.country, COLUMNS.population]
     df[fill_cols] = df[fill_cols].fillna(method='backfill')
     df[COLUMNS.location_id] = df[COLUMNS.location_id].astype(int)
-    df[COLUMNS.first_point] = df.groupby([COLUMNS.country, COLUMNS.location], as_index=False).Days.transform('min')
+    df[COLUMNS.first_point] = df.groupby([COLUMNS.country, COLUMNS.location], as_index=False)[COLUMNS.days].transform('min')
     df.loc[df[COLUMNS.first_point] < 0, COLUMNS.days] = df[COLUMNS.days] - df[COLUMNS.first_point]
     del df[COLUMNS.first_point]
     return df
