@@ -13,7 +13,8 @@ def process_death_df(death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
     if subnat:
         # FIXME: Faulty logic.  Use location hierarchy
         location_matches_country = death_df[COLUMNS.location] == death_df[COLUMNS.country]
-        death_df = death_df.loc[~location_matches_country].reset_index(drop=True)
+        mexico_is_special = death_df[COLUMNS.location_id] == 4657
+        death_df = death_df.loc[~location_matches_country | mexico_is_special].reset_index(drop=True)
 
     bad_locations = ['Outside Wuhan City, Hubei', 'Outside Hubei']
     bad_location_data = death_df[COLUMNS.location].isin(bad_locations)
@@ -119,160 +120,142 @@ def moving_average_log_age_standardized_death_ratio(df: pd.DataFrame, rate_thres
     return df
 
 
-class DeathModelData:
-    """Wrapper class that does mortality rate back-casting."""
+def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
+    df = df.copy()
+    sort_columns = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location, COLUMNS.date]
+    df = df.sort_values(sort_columns).reset_index(drop=True)
 
-    # TODO: Pull out data processing separately from modeling.
-    # TODO: rate threshold global.
-    def __init__(self, df: pd.DataFrame, age_pop_df: pd.DataFrame, age_death_df: pd.DataFrame,
-                 standardize_location_id: int, subnat: bool = False,
-                 rate_threshold: int = -15):
-        """
-        Parameters
-        ----------
-        df
-        age_pop_df
-        age_death_df
-        standardize_location_id
-        subnat
-        rate_threshold
+    # get delta, drop last day if it does not contain new deaths (assume lag)
+    diff = df[COLUMNS.ln_age_death_rate].values[1:] - df[COLUMNS.ln_age_death_rate].values[:-1]
+    df[COLUMNS.delta_ln_asdr] = np.nan
+    df[COLUMNS.delta_ln_asdr][1:] = diff
 
-        """
-        # set rate
-        self.rate_threshold = rate_threshold
-        df = process_death_df(df, subnat)
+    groupby_cols = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location]
+    df[COLUMNS.first_point] = df.groupby(groupby_cols, as_index=False)[COLUMNS.days].transform('min')
+    df.loc[df[COLUMNS.days] == df[COLUMNS.first_point], COLUMNS.delta_ln_asdr] = np.nan
+    df[COLUMNS.last_point] = df.groupby(groupby_cols, as_index=False)[COLUMNS.days].transform('max')
+    df = df.loc[~((df[COLUMNS.days] == df[COLUMNS.last_point]) & (df[COLUMNS.delta_ln_asdr] == 0))]
 
-        # get implied death rate based on "standard" population (using average
-        # of all possible locations atm)
-        standard_age_death_df = get_standard_age_death_df(age_death_df)
-        location_to_standardize = age_pop_df[COLUMNS.location_id] == standardize_location_id
-        age_pattern_df = age_pop_df.loc[location_to_standardize].merge(standard_age_death_df)
+    # clean up (will add delta back after expanding)
+    del df[COLUMNS.first_point]
+    del df[COLUMNS.last_point]
+    del df[COLUMNS.delta_ln_asdr]
 
-        implied_df = standard_age_death_df.merge(age_pop_df)
-        implied_df['Implied death rate'] = implied_df['death_rate'] * implied_df['age_group_weight_value']
-        implied_df = implied_df.groupby('location_id', as_index=False)['Implied death rate'].sum()
-        df = df.merge(implied_df)
+    # fill in missing days and smooth
+    loc_df_list = [df.loc[df['location_id'] == loc_id] for loc_id in df['location_id'].unique()]
+    df = pd.concat([moving_average_log_age_standardized_death_ratio(loc_df, rate_threshold)
+                    for loc_df in loc_df_list]).reset_index(drop=True)
 
-        # age-standardize
-        df['Age-standardized death rate'] = df.apply(
-            lambda x: self.get_asdr(
-                x['Death rate'],
-                x['Implied death rate'],
-                age_pattern_df),
-            axis=1)
-        df['ln(age-standardized death rate)'] = np.log(df['Age-standardized death rate'])
+    ###############################
+    # RE-APPLY SECOND DEATH INDEX #
+    ###############################
+    # TODO: Important things get their own functions.
+    # after we expand out days in the moving average bit, need to check we
+    # don't do so for days at the beginning with 2 deaths (happens in
+    # Other Counties, WA)
+    # make sure we still start at last day of two deaths
+    df[COLUMNS.last_day_two] = (df
+                                .loc[df[COLUMNS.deaths] == 2]
+                                .groupby(COLUMNS.location, as_index=False)[COLUMNS.date]
+                                .transform('max'))
+    df = df.loc[(df[COLUMNS.last_day_two].isnull()) | (df[COLUMNS.date] == df[COLUMNS.last_day_two])]
+    df[COLUMNS.two_date] = df.groupby(COLUMNS.location_id, as_index=False).Date.transform('min')
 
-        # keep above our threshold death rate, start counting days from there
-        df = df.loc[df['ln(age-standardized death rate)'] >= rate_threshold]
-        df['Day1'] = df.groupby(['Country/Region', 'Location'], as_index=False)['Date'].transform('min')
-        df['Days'] = df['Date'] - df['Day1']
-        df['Days'] = df['Days'].apply(lambda x: x.days)
-        del df['Day1']
+    # just want second death on, and only where total deaths
+    df = df.loc[df[COLUMNS.date] >= df[COLUMNS.two_date]]
+    df[COLUMNS.days] = df[COLUMNS.date] - df[COLUMNS.two_date]
+    df[COLUMNS.days] = df[COLUMNS.days].apply(lambda x: x.days)
+    groupby_cols = [COLUMNS.location_id, COLUMNS.location, COLUMNS.country, COLUMNS.days]
+    df = df.sort_values(groupby_cols).reset_index(drop=True)
+    ###################################
 
-        # for Hubei, move it a few days out
-        # TODO: document this better.
-        if 'Hubei' in df['Location'].to_list():
-            df.loc[df['Location'] == 'Hubei', 'Days'] += 3
-            print('Moving Hubei out a few days')
+    # get delta
+    obs_diff = df[COLUMNS.obs_ln_age_death_rate].values[1:] - df[COLUMNS.obs_ln_age_death_rate].values[:-1]
+    diff = df[COLUMNS.ln_age_death_rate].values[1:] - df[COLUMNS.ln_age_death_rate].values[:-1]
+    df[COLUMNS.delta_ln_asdr] = np.nan
+    df[COLUMNS.delta_ln_asdr][1:] = diff
+    df[COLUMNS.observed_delta_ln_asdr] = np.nan
+    df[COLUMNS.observed_delta_ln_asdr][1:] = obs_diff
 
-        # interpolate back to threshold
-        df = self._backcast_all_locations(df)
+    groupby_cols = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location]
 
-        self.dep_var = 'ln(age-standardized death rate)'
-        self.df = df.reset_index(drop=True)
+    df[COLUMNS.first_point] = df.groupby(groupby_cols, as_index=False)[COLUMNS.days].transform('min')
+    df.loc[df[COLUMNS.days] == df[COLUMNS.first_point], COLUMNS.delta_ln_asdr] = np.nan
+    df.loc[df[COLUMNS.days] == df[COLUMNS.first_point], COLUMNS.observed_delta_ln_asdr] = np.nan
 
-    def _backcast_all_locations(self, df: pd.DataFrame) -> pd.DataFrame:
-        # sort dataset
-        df = df.copy()
-        df = df.sort_values(['location_id', 'Country/Region', 'Location', 'Date']).reset_index(drop=True)
+    # project backwards using lagged ln(asdr)
+    delta_df = df.copy()
+    delta_df = delta_df.loc[(delta_df[COLUMNS.days] > 0) & (delta_df[COLUMNS.days] <= 5)]
+    delta_df = delta_df.groupby(groupby_cols, as_index=False)[COLUMNS.delta_ln_asdr].mean()
+    not_nursing_home = ~delta_df[COLUMNS.location].isin([LOCATIONS.life_care.name])
+    delta_df = delta_df.loc[(delta_df[COLUMNS.delta_ln_asdr] > 1e-4) & not_nursing_home]
 
-        # get delta, drop last day if it does not contain new deaths (assume lag)
-        diff = df['ln(age-standardized death rate)'].values[1:] - df['ln(age-standardized death rate)'].values[:-1]
-        df['Delta ln(asdr)'] = np.nan
-        df['Delta ln(asdr)'][1:] = diff
-        df['first_point'] = df.groupby(['location_id', 'Country/Region', 'Location'], as_index=False).Days.transform(
-            'min')
-        df.loc[df['Days'] == df['first_point'], 'Delta ln(asdr)'] = np.nan
-        df['last_point'] = df.groupby(['location_id', 'Country/Region', 'Location'], as_index=False).Days.transform(
-            'max')
-        df = df.loc[~((df['Days'] == df['last_point']) & (df['Delta ln(asdr)'] == 0))]
-
-        # clean up (will add delta back after expanding)
-        del df['first_point']
-        del df['last_point']
-        del df['Delta ln(asdr)']
-
-        # fill in missing days and smooth
-        loc_df_list = [df.loc[df['location_id'] == loc_id] for loc_id in df['location_id'].unique()]
-        df = pd.concat([moving_average_log_age_standardized_death_ratio(loc_df, self.rate_threshold)
-                        for loc_df in loc_df_list]).reset_index(drop=True)
-
-        ###############################
-        # RE-APPLY SECOND DEATH INDEX #
-        ###############################
-        # TODO: Important things get their own functions.
-        # after we expand out days in the moving average bit, need to check we
-        # don't do so for days at the beginning with 2 deaths (happens in
-        # Other Counties, WA)
-        # make sure we still start at last day of two deaths
-        df['last_day_two'] = df.loc[df['Deaths'] == 2].groupby('location_id', as_index=False).Date.transform('max')
-        df = df.loc[(df['last_day_two'].isnull()) | (df['Date'] == df['last_day_two'])]
-        df['two_date'] = df.groupby('location_id', as_index=False).Date.transform('min')
-
-        # just want second death on, and only where total deaths
-        df = df.loc[df['Date'] >= df['two_date']]
-        df['Days'] = df['Date'] - df['two_date']
-        df['Days'] = df['Days'].apply(lambda x: x.days)
-        df = df.sort_values(['location_id', 'Location', 'Country/Region', 'Days']).reset_index(drop=True)
-        ###################################
-
-        # get delta
-        obs_diff = (df['Observed ln(age-standardized death rate)'].values[1:]
-                    - df['Observed ln(age-standardized death rate)'].values[:-1])
-        diff = df['ln(age-standardized death rate)'].values[1:] - df['ln(age-standardized death rate)'].values[:-1]
-        df['Delta ln(asdr)'] = np.nan
-        df['Delta ln(asdr)'][1:] = diff
-        df['Observed delta ln(asdr)'] = np.nan
-        df['Observed delta ln(asdr)'][1:] = obs_diff
-        df['first_point'] = (df
-                             .groupby(['location_id', 'Country/Region', 'Location'], as_index=False)
-                             .Days.transform('min'))
-        df.loc[df['Days'] == df['first_point'], 'Delta ln(asdr)'] = np.nan
-        df.loc[df['Days'] == df['first_point'], 'Observed delta ln(asdr)'] = np.nan
-
-        # project backwards using lagged ln(asdr)
-        delta_df = df.copy()
-        delta_df = delta_df.loc[(delta_df['Days'] > 0) & (delta_df['Days'] <= 5)]
-        delta_df = (delta_df
-                    .groupby(['location_id', 'Country/Region', 'Location'], as_index=False)['Delta ln(asdr)']
-                    .mean())
-        delta_df = delta_df.loc[(delta_df['Delta ln(asdr)'] > 1e-4) &
-                                (~delta_df['Location'].isin(['Life Care Center, Kirkland, WA']))]
-        bc_location_ids = delta_df['location_id'].to_list()
-        bc_df = pd.concat([
-            backcast_log_age_standardized_death_ratio(
-                df.loc[df['location_id'] == bc_location_id],
-                bc_location_id,
-                delta_df.loc[delta_df['location_id'] == bc_location_id, 'Delta ln(asdr)'].item(),
-                self.rate_threshold,
-            )
-            for bc_location_id in bc_location_ids
-        ])
-        df = df.append(bc_df)
-        df = df.sort_values(['location_id', 'Days']).reset_index(drop=True)
-        # TODO: Document this assumption about back-filling.
-        df[['Location', 'Country/Region', 'population']] = (df[['Location', 'Country/Region', 'population']]
-                                                            .fillna(method='backfill'))
-        df['location_id'] = df['location_id'].astype(int)
-        df['first_point'] = df.groupby(['Country/Region', 'Location'], as_index=False).Days.transform('min')
-        df.loc[df['first_point'] < 0, 'Days'] = df['Days'] - df['first_point']
-        del df['first_point']
-
-        return df
-
-    @staticmethod
-    def get_asdr(true_rate, implied_rate, age_pattern_df: pd.DataFrame):
-        scaled_rate = age_pattern_df['death_rate'] * (true_rate / implied_rate)
-        return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
+    bc_location_ids = delta_df[COLUMNS.location_id].to_list()
+    bc_df = pd.concat([
+        backcast_log_age_standardized_death_ratio(
+            df.loc[df[COLUMNS.location_id] == bc_location_id],
+            bc_location_id,
+            delta_df.loc[delta_df[COLUMNS.location_id] == bc_location_id, COLUMNS.delta_ln_asdr].item(),
+            rate_threshold,
+        )
+        for bc_location_id in bc_location_ids
+    ])
+    df = df.append(bc_df)
+    df = df.sort_values([COLUMNS.location_id, COLUMNS.days]).reset_index(drop=True)
+    # TODO: Document this assumption about back-filling.
+    fill_cols = [COLUMNS.location, COLUMNS.country, COLUMNS.population]
+    df[fill_cols] = df[fill_cols].fillna(method='backfill')
+    df[COLUMNS.location_id] = df[COLUMNS.location_id].astype(int)
+    df[COLUMNS.first_point] = df.groupby([COLUMNS.country, COLUMNS.location], as_index=False)[COLUMNS.days].transform('min')
+    df.loc[df[COLUMNS.first_point] < 0, COLUMNS.days] = df[COLUMNS.days] - df[COLUMNS.first_point]
+    del df[COLUMNS.first_point]
+    return df
 
 
+def get_asdr(true_rate, implied_rate, age_pattern_df: pd.DataFrame):
+    scaled_rate = age_pattern_df['death_rate'] * (true_rate / implied_rate)
+    return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
+
+
+def compute_backcast_log_age_specific_death_rates(df: pd.DataFrame, age_pop_df: pd.DataFrame,
+                                                  age_death_df: pd.DataFrame, standardize_location_id: int,
+                                                  subnat: bool, rate_threshold: int) -> pd.DataFrame:
+    df = process_death_df(df, subnat)
+
+    # get implied death rate based on "standard" population (using average
+    # of all possible locations atm)
+    standard_age_death_df = get_standard_age_death_df(age_death_df)
+    location_to_standardize = age_pop_df[COLUMNS.location_id] == standardize_location_id
+    age_pattern_df = age_pop_df.loc[location_to_standardize].merge(standard_age_death_df)
+
+    implied_df = standard_age_death_df.merge(age_pop_df)
+    implied_df[COLUMNS.implied_death_rate] = implied_df[COLUMNS.death_rate_bad] * implied_df[COLUMNS.age_group_weight]
+    implied_df = implied_df.groupby(COLUMNS.location_id, as_index=False)[COLUMNS.implied_death_rate].sum()
+    df = df.merge(implied_df)
+
+    # age-standardize
+    df[COLUMNS.age_standardized_death_rate] = df.apply(
+        lambda x: get_asdr(
+            x[COLUMNS.death_rate],
+            x[COLUMNS.implied_death_rate],
+            age_pattern_df),
+        axis=1)
+    df[COLUMNS.ln_age_death_rate] = np.log(df[COLUMNS.age_standardized_death_rate])
+
+    # keep above our threshold death rate, start counting days from there
+    df = df.loc[df[COLUMNS.ln_age_death_rate] >= rate_threshold]
+
+    df[COLUMNS.day1] = df.groupby([COLUMNS.country, COLUMNS.location], as_index=False)[COLUMNS.date].transform('min')
+    df[COLUMNS.days] = df[COLUMNS.date] - df[COLUMNS.day1]
+    df[COLUMNS.days] = df[COLUMNS.days].apply(lambda x: x.days)
+    del df[COLUMNS.day1]
+
+    # for Hubei, move it a few days out
+    # TODO: document this better.
+    if 'Hubei' in df[COLUMNS.location].to_list():
+        df.loc[df[COLUMNS.location] == 'Hubei', COLUMNS.days] += 3
+        print('Moving Hubei out a few days')
+
+    # interpolate back to threshold
+    df = backcast_all_locations(df, rate_threshold)
+    return df.reset_index(drop=True)
