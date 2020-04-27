@@ -49,6 +49,7 @@ class _Columns(NamedTuple):
 
     date: str = 'Date'
     days: str = 'Days'
+    day1: str = 'Day1'
     last_day: str = 'last_day'
     last_day_two: str = 'last_day_two'
     two_date: str = 'two_date'
@@ -57,10 +58,13 @@ class _Columns(NamedTuple):
     population: str = 'population'
 
     age_group: str = 'age_group'
+    age_group_weight: str = 'age_group_weight_value'
 
     deaths: str = 'Deaths'
     death_rate: str = 'Death rate'
+    implied_death_rate: str = 'Implied death rate'
     death_rate_bad: str = 'death_rate'
+    age_standardized_death_rate: str = 'Age-standardized death rate'
     ln_age_death_rate: str = 'ln(age-standardized death rate)'
     obs_ln_age_death_rate: str = 'Observed ln(age-standardized death rate)'
     ln_death_rate: str = 'ln(death rate)'
