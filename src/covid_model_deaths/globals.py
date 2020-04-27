@@ -50,6 +50,8 @@ class _Columns(NamedTuple):
     date: str = 'Date'
     days: str = 'Days'
     last_day: str = 'last_day'
+    last_day_two: str = 'last_day_two'
+    two_date: str = 'two_date'
     threshold_date: str = 'threshold_date'
 
     population: str = 'population'
@@ -62,6 +64,10 @@ class _Columns(NamedTuple):
     ln_age_death_rate: str = 'ln(age-standardized death rate)'
     obs_ln_age_death_rate: str = 'Observed ln(age-standardized death rate)'
     ln_death_rate: str = 'ln(death rate)'
+    delta_ln_asdr: str = 'Delta ln(asdr)'
+    observed_delta_ln_asdr: str = 'Observed delta ln(asdr)'
+    first_point: str = 'first_point'
+    last_point: str = 'last_point'
 
     confirmed: str = 'Confirmed'
     confirmed_case_rate: str = 'Confirmed case rate'
