@@ -6,20 +6,14 @@ from pathlib import Path
 import shutil
 from typing import Dict, List, Tuple
 
-from db_queries import get_location_metadata
-import dill as pickle
-from loguru import logger
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
 import tqdm
-import yaml
 
-import covid_model_deaths
-from covid_model_deaths.deaths_io import InputsContext, MEASURES, Checkpoint
 from covid_model_deaths.compare_moving_average import CompareAveragingModelDeaths
-from covid_model_deaths.data import plot_crude_rates, DeathModelData
+from covid_model_deaths.data import compute_backcast_log_age_specific_death_rates
 from covid_model_deaths.drawer import Drawer
 from covid_model_deaths.impute_death_threshold import impute_death_threshold as impute_death_threshold_
 import covid_model_deaths.globals as cmd_globals
@@ -29,93 +23,9 @@ from covid_model_deaths.social_distancing_cov import SocialDistCov
 from covid_model_deaths.utilities import submit_curvefit, CompareModelDeaths
 
 
-def run_us_model(input_data_version: str,
-                 peak_file: str,
-                 cases_deaths_file: str,
-                 r0_file: str,
-                 output_path: str,
-                 datestamp_label: str,
-                 r0_locs: List[int],
-                 yesterday_draw_path: str,
-                 before_yesterday_draw_path: str,
-                 previous_average_draw_path: str) -> None:
-    inputs = InputsContext(f'/ihme/covid-19/measure-data/{input_data_version}')
-    loc_df = get_locations(LOCATION_SET_VERSION)
-    input_full_df = filter_data(inputs.load(MEASURES.full_data))
-    input_death_df = filter_data(inputs.load(MEASURES.deaths), kind='deaths')
-    input_age_pop_df = inputs.load(MEASURES.age_pop)
-    input_age_death_df = inputs.load(MEASURES.age_death)
-
-    backcast_output_path = f'{output_path}/backcast_for_case_to_death.csv'
-    threshold_dates_output_path = f'{output_path}/threshold_dates.csv'
-    raw_draw_path = f'{output_path}/state_data.csv'
-    model_type_path = f'{output_path}/state_models_used.csv'
-    average_draw_path = f'{output_path}/past_avg_state_data.csv'
-
-    plot_crude_rates(death_df, level='subnat')
-
-    cases_and_backcast_deaths = make_cases_and_backcast_deaths(full_df, death_df, age_pop_df, age_death_df)
-    cases_and_backcast_deaths.to_csv(backcast_output_path, index=False)
-
-    in_us = cases_and_backcast_deaths[COLUMNS.country] == LOCATIONS.usa.name
-    state_level = ~cases_and_backcast_deaths[COLUMNS.state].isnull()
-    us_states = cases_and_backcast_deaths.loc[in_us & state_level, COLUMNS.state].unique().to_list()
-
-    us_threshold_dates = impute_death_threshold(cases_and_backcast_deaths, location_list=us_states)
-    us_threshold_dates.to_csv(threshold_dates_output_path, index=False)
-
-    us_date_mean_df = make_date_mean_df(us_threshold_dates)
-
-    last_day_df = make_last_day_df(full_df, us_date_mean_df)
-    cases_deaths_df = pd.read_csv(cases_deaths_file)
-    cases_deaths_df[COLUMNS.date] = pd.to_datetime(cases_deaths_df[COLUMNS.date])
-
-    us_location_ids, us_location_names = get_us_location_ids_and_names(full_df)
-
-    submodel_dict = submit_models(full_df, death_df, age_pop_df, age_death_df, us_date_mean_df, cases_deaths_df,
-                                  us_location_ids, us_location_names, r0_locs,
-                                  peak_file, output_path, input_data_version, r0_file,
-                                  str(Path(covid_model_deaths.__file__).parent))
-
-    in_us = full_df[COLUMNS.country] == LOCATIONS.usa.name
-    state_level = ~full_df[COLUMNS.state].isnull()
-    usa_obs_df = full_df[in_us & state_level]
-
-    draw_dfs, past_draw_dfs, models_used, days, ensemble_draws_dfs = compile_draws(us_location_ids,
-                                                                                   us_location_names,
-                                                                                   submodel_dict,
-                                                                                   usa_obs_df,
-                                                                                   us_threshold_dates,
-                                                                                   age_pop_df)
-    if 'location' not in models_used:
-        raise ValueError('No location-specific draws used, must be using wrong tag')
-
-    draw_df = pd.concat(draw_dfs)
-    model_type_df = pd.DataFrame({
-        'location': us_location_names,
-        'model_used': models_used
-    })
-    draw_df.to_csv(raw_draw_path, index=False)
-    model_type_df.to_csv(model_type_path, index=False)
-
-    ensemble_path = make_and_save_draw_plots(output_path, us_location_ids, us_location_names,
-                                             ensemble_draws_dfs, days, models_used)
-
-    average_draw_df = average_draws(output_path, yesterday_draw_path, before_yesterday_draw_path)
-    average_draw_df.to_csv(average_draw_path)
-
-    moving_average_path = make_and_save_compare_average_plots(output_path, raw_draw_path, average_draw_path,
-                                                              yesterday_draw_path, before_yesterday_draw_path)
-
-    compare_to_previous_path = make_and_save_compare_to_previous_plots(output_path, average_draw_path,
-                                                                       previous_average_draw_path)
-
-    send_plots_to_diagnostics(datestamp_label, ensemble_path, moving_average_path, compare_to_previous_path)
-
-
 def make_cases_and_backcast_deaths(full_df: pd.DataFrame, death_df: pd.DataFrame,
                                    age_pop_df: pd.DataFrame, age_death_df: pd.DataFrame,
-                                   location_ids: List[int], subnat: bool=True) -> pd.DataFrame:
+                                   location_ids: List[int], subnat: bool = True) -> pd.DataFrame:
     backcast_deaths_df = backcast_deaths_parallel(location_ids, death_df, age_pop_df, age_death_df, subnat)
 
     full_df_columns = [COLUMNS.location_id, COLUMNS.state, COLUMNS.country, COLUMNS.date,
@@ -127,6 +37,44 @@ def make_cases_and_backcast_deaths(full_df: pd.DataFrame, death_df: pd.DataFrame
     cases_and_backcast_deaths[COLUMNS.location_id] = cases_and_backcast_deaths[COLUMNS.location_id].astype(int)
 
     return cases_and_backcast_deaths
+
+
+def backcast_deaths_parallel(location_ids: List[int], death_df: pd.DataFrame,
+                             age_pop_df: pd.DataFrame, age_death: pd.DataFrame, subnat: bool) -> pd.DataFrame:
+    _combiner = functools.partial(backcast_deaths,
+                                  death_df=death_df,
+                                  age_pop_df=age_pop_df,
+                                  age_death_df=age_death,
+                                  subnat=subnat)
+    with multiprocessing.Pool(20) as p:
+        backcast_deaths_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
+    return pd.concat(backcast_deaths_dfs)
+
+
+def backcast_deaths(location_id: int, death_df: pd.DataFrame,
+                    age_pop_df: pd.DataFrame, age_death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
+    output_columns = [COLUMNS.location_id, COLUMNS.state, COLUMNS.country, COLUMNS.date,
+                      COLUMNS.deaths, COLUMNS.death_rate, COLUMNS.population]
+    mod_df = compute_backcast_log_age_specific_death_rates(death_df,
+                                                           age_pop_df,
+                                                           age_death_df,
+                                                           standardize_location_id=location_id,
+                                                           subnat=subnat,
+                                                           rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
+    mod_df = mod_df.loc[mod_df[COLUMNS.location_id] == location_id].reset_index(drop=True)
+    if len(mod_df) > 0:
+        date0 = mod_df[COLUMNS.date].min()
+        day0 = mod_df.loc[~mod_df[COLUMNS.date].isnull(), COLUMNS.days].min()
+        mod_df.loc[mod_df[COLUMNS.days] == 0, COLUMNS.date] = date0 - timedelta(days=np.round(day0))
+        mod_df = mod_df.loc[~((mod_df[COLUMNS.deaths].isnull()) & (mod_df[COLUMNS.date] == date0))]
+        mod_df = mod_df.loc[~mod_df[COLUMNS.date].isnull()]
+        mod_df.loc[mod_df[COLUMNS.death_rate].isnull(), COLUMNS.death_rate] = np.exp(mod_df[COLUMNS.ln_age_death_rate])
+        mod_df.loc[mod_df[COLUMNS.deaths].isnull(), COLUMNS.deaths] = mod_df[COLUMNS.death_rate] * mod_df[COLUMNS.population]
+        mod_df = mod_df.rename(index=str, columns={COLUMNS.location: COLUMNS.state})
+    else:
+        mod_df = pd.DataFrame(columns=output_columns)
+
+    return mod_df[output_columns].reset_index(drop=True)
 
 
 def impute_death_threshold(cases_and_backcast_deaths_df: pd.DataFrame, loc_df: pd.DataFrame) -> pd.DataFrame:
@@ -186,14 +134,18 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
         i += 1
         level = loc_df.set_index(COLUMNS.location_id).at[location_id, COLUMNS.level]
         subnat = not level == 0
-        mod = DeathModelData(death_df, age_pop_df, age_death_df, location_id, 'threshold',
-                             subnat=subnat, rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
+        mod_df = compute_backcast_log_age_specific_death_rates(death_df,
+                                                               age_pop_df,
+                                                               age_death_df,
+                                                               standardize_location_id=location_id,
+                                                               subnat=subnat,
+                                                               rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
         if location_name in nursing_home_locations:
             # save only nursing homes
-            mod_df = mod.df.copy()
+            mod_df = mod_df.copy()
         else:
             # save only others
-            mod_df = mod.df.loc[~mod.df[COLUMNS.location].isin(nursing_home_locations)].reset_index(drop=True)
+            mod_df = mod_df.loc[~mod_df[COLUMNS.location].isin(nursing_home_locations)].reset_index(drop=True)
         mod_df = mod_df.loc[~(mod_df[COLUMNS.deaths].isnull())].reset_index(drop=True)
 
         # flag as true data
@@ -444,63 +396,7 @@ def get_backcast_location_ids(data: pd.DataFrame, most_detailed: bool = True) ->
     return location_ids
 
 
-def get_us_location_ids_and_names(full_df: pd.DataFrame) -> Tuple[List[int], List[str]]:
-    loc_df = get_location_metadata(location_set_id=cmd_globals.GBD_REPORTING_LOCATION_SET_ID,
-                                   gbd_round_id=cmd_globals.GBD_2017_ROUND_ID)
-    us_states = loc_df[COLUMNS.parent_id] == LOCATIONS.usa.id
-    not_wa_state = loc_df[COLUMNS.location_name] != LOCATIONS.washington.name
-    us_location_ids_except_wa = loc_df.loc[us_states & not_wa_state, COLUMNS.location_id].to_list()
-    us_location_names_except_wa = loc_df.loc[us_states & not_wa_state, COLUMNS.location_name].to_list()
 
-    wa_state_ids = []
-    wa_state_names = []
-    for wa_location in [LOCATIONS.other_wa_counties.name, LOCATIONS.king_and_snohomish.name, LOCATIONS.life_care.name]:
-        wa_state_ids += [int(full_df.loc[full_df[COLUMNS.state] == wa_location, COLUMNS.location_id].unique().item())]
-        wa_state_names += [wa_location]
-
-    us_location_ids = us_location_ids_except_wa + wa_state_ids
-    us_location_names = us_location_names_except_wa + wa_state_names
-    return us_location_ids, us_location_names
-
-
-def backcast_deaths_parallel(location_ids: List[int], death_df: pd.DataFrame,
-                             age_pop_df: pd.DataFrame, age_death: pd.DataFrame, subnat: bool) -> pd.DataFrame:
-    _combiner = functools.partial(backcast_deaths,
-                                  death_df=death_df,
-                                  age_pop_df=age_pop_df,
-                                  age_death_df=age_death,
-                                  subnat=subnat)
-    with multiprocessing.Pool(20) as p:
-        backcast_deaths_dfs = list(tqdm.tqdm(p.imap(_combiner, location_ids), total=len(location_ids)))
-    return pd.concat(backcast_deaths_dfs)
-
-
-def backcast_deaths(location_id: int, death_df: pd.DataFrame,
-                    age_pop_df: pd.DataFrame, age_death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
-    output_columns = [COLUMNS.location_id, COLUMNS.state, COLUMNS.country, COLUMNS.date,
-                      COLUMNS.deaths, COLUMNS.death_rate, COLUMNS.population]
-    death_model = DeathModelData(death_df,
-                                 age_pop_df,
-                                 age_death_df,
-                                 location_id,
-                                 'threshold',
-                                 subnat=subnat,
-                                 rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
-    mod_df = death_model.df
-    mod_df = mod_df.loc[mod_df[COLUMNS.location_id] == location_id].reset_index(drop=True)
-    if len(mod_df) > 0:
-        date0 = mod_df[COLUMNS.date].min()
-        day0 = mod_df.loc[~mod_df[COLUMNS.date].isnull(), COLUMNS.days].min()
-        mod_df.loc[mod_df[COLUMNS.days] == 0, COLUMNS.date] = date0 - timedelta(days=np.round(day0))
-        mod_df = mod_df.loc[~((mod_df[COLUMNS.deaths].isnull()) & (mod_df[COLUMNS.date] == date0))]
-        mod_df = mod_df.loc[~mod_df[COLUMNS.date].isnull()]
-        mod_df.loc[mod_df[COLUMNS.death_rate].isnull(), COLUMNS.death_rate] = np.exp(mod_df[COLUMNS.ln_age_death_rate])
-        mod_df.loc[mod_df[COLUMNS.deaths].isnull(), COLUMNS.deaths] = mod_df[COLUMNS.death_rate] * mod_df[COLUMNS.population]
-        mod_df = mod_df.rename(index=str, columns={COLUMNS.location: COLUMNS.state})
-    else:
-        mod_df = pd.DataFrame(columns=output_columns)
-
-    return mod_df[output_columns].reset_index(drop=True)
 
 
 def date_mean(dates: pd.Series) -> datetime:
