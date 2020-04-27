@@ -60,6 +60,7 @@ class _Columns(NamedTuple):
     death_rate: str = 'Death rate'
     death_rate_bad: str = 'death_rate'
     ln_age_death_rate: str = 'ln(age-standardized death rate)'
+    obs_ln_age_death_rate: str = 'Observed ln(age-standardized death rate)'
     ln_death_rate: str = 'ln(death rate)'
 
     confirmed: str = 'Confirmed'

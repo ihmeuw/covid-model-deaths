@@ -72,8 +72,55 @@ def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int
     return bc_df
 
 
+def moving_3day_avg(day, data):
+    # determine difference
+    days = np.array([day-1, day, day+1])
+    days = days[days >= 0]
+    days = days[days <= data[COLUMNS.days].max()]
+    avg = data.loc[data[COLUMNS.days].isin(days), COLUMNS.ln_age_death_rate].mean()
+    return avg
+
+
+def moving_average_log_age_standardized_death_ratio(df: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
+    if df[COLUMNS.location_id].unique().size != 1:
+        raise ValueError('Multiple locations in dataset.')
+    if df[COLUMNS.days].min() != 0:
+        raise ValueError('Not starting at 0')
+
+    full_day_range = pd.DataFrame({COLUMNS.days: np.arange(df[COLUMNS.days].min(), df[COLUMNS.days].max()+1)})
+    df = df.merge(full_day_range, how='outer')
+    df = df.sort_values(COLUMNS.days).reset_index(drop=True)
+
+    no_date = df[COLUMNS.date].isnull()
+    df.loc[no_date, COLUMNS.date] = (df
+                                     .loc[no_date, COLUMNS.days]
+                                     .apply(lambda x: df[COLUMNS.date].min() + timedelta(days=x)))
+    # TODO: Document.
+    df = df.fillna(method='pad')
+
+    # get diffs
+    moving_average = [moving_3day_avg(i, df) for i in df[COLUMNS.days]]
+    df[COLUMNS.obs_ln_age_death_rate] = df[COLUMNS.ln_age_death_rate]
+    df[COLUMNS.ln_age_death_rate] = moving_average
+
+    # replace last point w/ daily value over 3->2 and 2->1 and the first
+    # with 1->2, 2->3; use observed if 3 data points or less
+    if len(df) > 3:
+        last_step = np.mean(np.array(moving_average[-3:-1]) - np.array(moving_average[-4:-2]))
+        df[COLUMNS.ln_age_death_rate][len(df)-1] = (df[COLUMNS.ln_age_death_rate][len(df)-2] + last_step)
+
+        first_step = np.mean(np.array(moving_average[2:4]) - np.array(moving_average[1:3]))
+        df[COLUMNS.ln_age_death_rate][0] = df[COLUMNS.ln_age_death_rate][1] - first_step
+        if df[COLUMNS.ln_age_death_rate][0] < rate_threshold:
+            df[COLUMNS.ln_age_death_rate][0] = rate_threshold
+    else:
+        df[COLUMNS.ln_age_death_rate] = df[COLUMNS.obs_ln_age_death_rate]
+
+    return df
+
+
 class DeathModelData:
-    """Wrapper class that does mortality rate backcasting."""
+    """Wrapper class that does mortality rate back-casting."""
 
     # TODO: Pull out data processing separately from modeling.
     # TODO: rate threshold global.
@@ -87,7 +134,6 @@ class DeathModelData:
         age_pop_df
         age_death_df
         standardize_location_id
-        model_type
         subnat
         rate_threshold
 
@@ -158,7 +204,8 @@ class DeathModelData:
 
         # fill in missing days and smooth
         loc_df_list = [df.loc[df['location_id'] == loc_id] for loc_id in df['location_id'].unique()]
-        df = pd.concat([self._moving_average_lnasdr(loc_df) for loc_df in loc_df_list]).reset_index(drop=True)
+        df = pd.concat([moving_average_log_age_standardized_death_ratio(loc_df, self.rate_threshold)
+                        for loc_df in loc_df_list]).reset_index(drop=True)
 
         ###############################
         # RE-APPLY SECOND DEATH INDEX #
@@ -228,45 +275,4 @@ class DeathModelData:
         scaled_rate = age_pattern_df['death_rate'] * (true_rate / implied_rate)
         return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
 
-    def _moving_average_lnasdr(self, df: pd.DataFrame) -> pd.DataFrame:
-        if df.location_id.unique().size != 1:
-            raise ValueError('Multiple locations in dataset.')
-        if df['Days'].min() != 0:
-            raise ValueError('Not starting at 0')
-        df = df.merge(pd.DataFrame({'Days': np.arange(df['Days'].min(), df['Days'].max()+1)}), how='outer')
-        df = df.sort_values('Days').reset_index(drop=True)
-        df.loc[df['Date'].isnull(), 'Date'] = (df.loc[df['Date'].isnull(), 'Days']
-                                               .apply(lambda x: df['Date'].min() + timedelta(days=x)))
-        # TODO: Document.
-        df = df.fillna(method='pad')
 
-        # FIXME: Shadowing variable from outer scope.  Make a separate
-        #  function.
-        def moving_3day_avg(day, data):
-            # determine difference
-            days = np.array([day-1, day, day+1])
-            days = days[days >= 0]
-            days = days[days <= data['Days'].max()]
-            avg = data.loc[data['Days'].isin(days), 'ln(age-standardized death rate)'].mean()
-
-            return avg
-
-        # get diffs
-        avgs = [moving_3day_avg(i, df) for i in df['Days']]
-        df['Observed ln(age-standardized death rate)'] = df['ln(age-standardized death rate)']
-        df['ln(age-standardized death rate)'] = avgs
-
-        # replace last point w/ daily value over 3->2 and 2->1 and the first
-        # with 1->2, 2->3; use observed if 3 data points or less
-        if len(df) > 3:
-            last_step = np.mean(np.array(avgs[-3:-1]) - np.array(avgs[-4:-2]))
-            df['ln(age-standardized death rate)'][len(df)-1] = (df['ln(age-standardized death rate)'][len(df)-2]
-                                                                + last_step)
-            first_step = np.mean(np.array(avgs[2:4]) - np.array(avgs[1:3]))
-            df['ln(age-standardized death rate)'][0] = df['ln(age-standardized death rate)'][1] - first_step
-            if df['ln(age-standardized death rate)'][0] < self.rate_threshold:
-                df['ln(age-standardized death rate)'][0] = self.rate_threshold
-        else:
-            df['ln(age-standardized death rate)'] = df['Observed ln(age-standardized death rate)']
-
-        return df
