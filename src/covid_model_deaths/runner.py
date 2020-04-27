@@ -13,7 +13,7 @@ import pandas as pd
 import tqdm
 
 from covid_model_deaths.compare_moving_average import CompareAveragingModelDeaths
-from covid_model_deaths.data import DeathModelData
+from covid_model_deaths.data import compute_backcast_log_age_specific_death_rates
 from covid_model_deaths.drawer import Drawer
 from covid_model_deaths.impute_death_threshold import impute_death_threshold as impute_death_threshold_
 import covid_model_deaths.globals as cmd_globals
@@ -55,14 +55,12 @@ def backcast_deaths(location_id: int, death_df: pd.DataFrame,
                     age_pop_df: pd.DataFrame, age_death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
     output_columns = [COLUMNS.location_id, COLUMNS.state, COLUMNS.country, COLUMNS.date,
                       COLUMNS.deaths, COLUMNS.death_rate, COLUMNS.population]
-    death_model = DeathModelData(death_df,
-                                 age_pop_df,
-                                 age_death_df,
-                                 location_id,
-                                 'threshold',
-                                 subnat=subnat,
-                                 rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
-    mod_df = death_model.df
+    mod_df = compute_backcast_log_age_specific_death_rates(death_df,
+                                                           age_pop_df,
+                                                           age_death_df,
+                                                           standardize_location_id=location_id,
+                                                           subnat=subnat,
+                                                           rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
     mod_df = mod_df.loc[mod_df[COLUMNS.location_id] == location_id].reset_index(drop=True)
     if len(mod_df) > 0:
         date0 = mod_df[COLUMNS.date].min()
@@ -136,14 +134,18 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
         i += 1
         level = loc_df.set_index(COLUMNS.location_id).at[location_id, COLUMNS.level]
         subnat = not level == 0
-        mod = DeathModelData(death_df, age_pop_df, age_death_df, location_id, 'threshold',
-                             subnat=subnat, rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
+        mod_df = compute_backcast_log_age_specific_death_rates(death_df,
+                                                               age_pop_df,
+                                                               age_death_df,
+                                                               standardize_location_id=location_id,
+                                                               subnat=subnat,
+                                                               rate_threshold=cmd_globals.LN_MORTALITY_RATE_THRESHOLD)
         if location_name in nursing_home_locations:
             # save only nursing homes
-            mod_df = mod.df.copy()
+            mod_df = mod_df.copy()
         else:
             # save only others
-            mod_df = mod.df.loc[~mod.df[COLUMNS.location].isin(nursing_home_locations)].reset_index(drop=True)
+            mod_df = mod_df.loc[~mod_df[COLUMNS.location].isin(nursing_home_locations)].reset_index(drop=True)
         mod_df = mod_df.loc[~(mod_df[COLUMNS.deaths].isnull())].reset_index(drop=True)
 
         # flag as true data
