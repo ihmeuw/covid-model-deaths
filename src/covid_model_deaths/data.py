@@ -13,7 +13,8 @@ def process_death_df(death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
     if subnat:
         # FIXME: Faulty logic.  Use location hierarchy
         location_matches_country = death_df[COLUMNS.location] == death_df[COLUMNS.country]
-        death_df = death_df.loc[~location_matches_country].reset_index(drop=True)
+        mexico_is_special = death_df[COLUMNS.location_id] == 4657
+        death_df = death_df.loc[~location_matches_country | mexico_is_special].reset_index(drop=True)
 
     bad_locations = ['Outside Wuhan City, Hubei', 'Outside Hubei']
     bad_location_data = death_df[COLUMNS.location].isin(bad_locations)
