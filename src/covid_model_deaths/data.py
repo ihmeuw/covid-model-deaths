@@ -91,7 +91,7 @@ class DeathModelData:
         df = df.loc[df['Location'] != 'Outside Wuhan City, Hubei'].reset_index(drop=True)
 
         df = df.loc[df['Location'] != 'Outside Hubei'].reset_index(drop=True)
-
+        import pdb; pdb.set_trace()
         # make sure we don't have naming problem
         # TODO: Check preconditions on data sets well before this.  Use
         #  proper errors.
