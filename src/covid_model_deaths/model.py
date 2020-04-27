@@ -116,7 +116,7 @@ def ap_model(df, model_location, location_cov, n_draws,
 
     # for prediction of places with no data
     alpha_times_beta = np.exp(0.7)
-    obs_bounds = [30, np.inf]  # filter the data rich models
+    obs_bounds = [40, np.inf]  # filter the data rich models
     predict_cov = np.array([1.0, location_cov, 1.0])  # new covariates for the places.
 
     # tight prior control panel
@@ -532,18 +532,17 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 
 
 def run_death_models():
-    """
-    args = argparse.Namespace(
-        model_location_id=4750,
-        data_file='/ihme/covid-19/deaths/dev/2020_04_18_Europe/model_data_google_21/Acre.csv',
-        cov_file='/ihme/covid-19/deaths/dev/2020_04_18_Europe/model_data_google_21/Acre covariate.csv',
-        last_day_file='/ihme/covid-19/deaths/dev/2020_04_18_Europe/last_day.csv',
-        peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_14/final_peak_locs_04_14.csv',
-        output_dir='/ihme/covid-19/deaths/dev/2020_04_18_Europe/model_data_google_21/Acre',
-        covariate_effect='gamma',
-        n_draws=333
-    )
-    """
+#     args = argparse.Namespace(
+#         model_location_id=4657,
+#         data_file='/ihme/covid-19/deaths/prod/2020_04_25_Europe_final/model_data_google_21/4657.csv',
+#         cov_file='/ihme/covid-19/deaths/prod/2020_04_25_Europe_final/model_data_google_21/4657_covariate.csv',
+#         last_day_file='/ihme/covid-19/deaths/prod/2020_04_25_Europe_final/last_day.csv',
+#         peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_14/final_peak_locs_04_14.csv',
+#         output_dir='/ihme/covid-19/deaths/prod/2020_04_25_Europe_final/model_data_google_21/4657',
+#         covariate_effect='gamma',
+#         n_draws=333
+#     )
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--model_location_id', help='id of location to which we are standardizing.', type=int
@@ -571,6 +570,7 @@ def run_death_models():
     )
     args = parser.parse_args()
 
+    logger.info(args)
     # read data
     df = pd.read_csv(args.data_file)
     cov_df = pd.read_csv(args.cov_file)
