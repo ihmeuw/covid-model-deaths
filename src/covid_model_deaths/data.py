@@ -96,99 +96,6 @@ def get_asdr(true_rate, implied_rate, age_pattern_df: pd.DataFrame):
     return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
 
 
-def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int,
-                                              bc_step: int, rate_threshold: float) -> pd.DataFrame:
-    """Backcast the log age standardized death rate back to the rate threshold."""
-    out_columns = [COLUMNS.location_id, COLUMNS.days, COLUMNS.ln_age_death_rate]
-    # get first point
-    start_rep = df.sort_values(COLUMNS.days).reset_index(drop=True)[COLUMNS.ln_age_death_rate][0]
-
-    if start_rep > rate_threshold:  # backcast
-        # count from threshold on
-        bc_rates = np.arange(rate_threshold, start_rep, bc_step)
-        bc_df = pd.DataFrame({
-            COLUMNS.location_id: location_id,
-            COLUMNS.ln_age_death_rate: np.flip(bc_rates)
-        })
-
-        # remove fractional step from last (we force the threshold day to
-        # be 0, so the partial day ends up getting added onto the first
-        # day) no longer add date, since we have partial days
-        if df[COLUMNS.days].min() != 0:
-            raise ValueError(f'First day is not 0, as expected... (location_id: {location_id})')
-        bc_df[COLUMNS.days] = -bc_df.index - (start_rep - bc_rates[-1]) / bc_step
-
-        # don't project more than 10 days back, or we will have PROBLEMS
-        bc_df = (bc_df
-                 .loc[bc_df[COLUMNS.days] >= -10, out_columns]
-                 .reset_index(drop=True))
-    elif start_rep == rate_threshold:
-        bc_df = pd.DataFrame(columns=out_columns)
-    else:
-        raise ValueError('First value is below threshold, should not be possible.')
-
-    return bc_df
-
-
-def drop_lagged_deaths_by_location(data: pd.DataFrame) -> pd.DataFrame:
-    """Drop rows from data where no new deaths occurred on the current day.
-
-    Parameters
-    ----------
-    data
-        The dataset containing lagged deaths.
-
-    Returns
-    -------
-        The same dataset with rows containing lagged deaths removed.
-
-    """
-    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.deaths]
-    lagged_deaths = (
-        data.loc[:, required_columns]
-            .groupby(COLUMNS.location_id, as_index=False)
-            .apply(lambda x: ((x[COLUMNS.date] == x[COLUMNS.date].max())
-                              & (x[COLUMNS.deaths] == x[COLUMNS.deaths].shift(1))))
-            .droplevel(0)
-    )
-    return data.loc[~lagged_deaths]
-
-
-def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
-    """Smooths over the log age specific death rate.
-
-    Parameters
-    ----------
-    data
-        The data with the age specific death rate to smooth over.
-    rate_threshold
-        The minimum age specific death rate.  Values produced in the
-        averaging will be pinned to this.
-
-    Returns
-    -------
-        The same data with the log asdr replaced with its average and a new
-        column with the original observed asdr.
-
-    """
-    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.days, COLUMNS.ln_age_death_rate]
-    assert set(required_columns).issubset(data.columns)
-    data[COLUMNS.obs_ln_age_death_rate] = data[COLUMNS.ln_age_death_rate]
-    moving_average = expanding_moving_average_by_location(data, COLUMNS.ln_age_death_rate)
-    # noinspection PyTypeChecker
-    moving_average[moving_average < rate_threshold] = rate_threshold
-    data = data.set_index([COLUMNS.location_id, COLUMNS.date])
-    data = (pd.concat([data.drop(columns=COLUMNS.ln_age_death_rate), moving_average], axis=1)
-            .fillna(method='pad')
-            .reset_index())
-
-    # TODO: Remove when we can excavate more of the days stuff.
-    data[COLUMNS.days] = (data.groupby(COLUMNS.location_id, as_index=False)
-                          .apply(lambda x: pd.Series(range(len(x)), index=x.index, name=COLUMNS.days))
-                          .droplevel(0))
-    return data
-
-
 # FIXME: This is also really a main function :-/
 def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
     df = df.copy()
@@ -261,3 +168,101 @@ def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFr
     df.loc[df[COLUMNS.first_point] < 0, COLUMNS.days] = df[COLUMNS.days] - df[COLUMNS.first_point]
     del df[COLUMNS.first_point]
     return df
+
+
+def drop_lagged_deaths_by_location(data: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows from data where no new deaths occurred on the current day.
+
+    Parameters
+    ----------
+    data
+        The dataset containing lagged deaths.
+
+    Returns
+    -------
+        The same dataset with rows containing lagged deaths removed.
+
+    """
+    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.deaths]
+    lagged_deaths = (
+        data.loc[:, required_columns]
+            .groupby(COLUMNS.location_id, as_index=False)
+            .apply(lambda x: ((x[COLUMNS.date] == x[COLUMNS.date].max())
+                              & (x[COLUMNS.deaths] == x[COLUMNS.deaths].shift(1))))
+            .droplevel(0)
+    )
+    return data.loc[~lagged_deaths]
+
+
+def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
+    """Smooths over the log age specific death rate.
+
+    Parameters
+    ----------
+    data
+        The data with the age specific death rate to smooth over.
+    rate_threshold
+        The minimum age specific death rate.  Values produced in the
+        averaging will be pinned to this.
+
+    Returns
+    -------
+        The same data with the log asdr replaced with its average and a new
+        column with the original observed asdr.
+
+    """
+    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.days, COLUMNS.ln_age_death_rate]
+    assert set(required_columns).issubset(data.columns)
+    data[COLUMNS.obs_ln_age_death_rate] = data[COLUMNS.ln_age_death_rate]
+    moving_average = expanding_moving_average_by_location(data, COLUMNS.ln_age_death_rate)
+    # noinspection PyTypeChecker
+    moving_average[moving_average < rate_threshold] = rate_threshold
+    data = data.set_index([COLUMNS.location_id, COLUMNS.date])
+    data = (pd.concat([data.drop(columns=COLUMNS.ln_age_death_rate), moving_average], axis=1)
+            .fillna(method='pad')
+            .reset_index())
+
+    # TODO: Remove when we can excavate more of the days stuff.
+    data[COLUMNS.days] = (data.groupby(COLUMNS.location_id, as_index=False)
+                          .apply(lambda x: pd.Series(range(len(x)), index=x.index, name=COLUMNS.days))
+                          .droplevel(0))
+    return data
+
+
+def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int,
+                                              bc_step: int, rate_threshold: float) -> pd.DataFrame:
+    """Backcast the log age standardized death rate back to the rate threshold."""
+    out_columns = [COLUMNS.location_id, COLUMNS.days, COLUMNS.ln_age_death_rate]
+    # get first point
+    start_rep = df.sort_values(COLUMNS.days).reset_index(drop=True)[COLUMNS.ln_age_death_rate][0]
+
+    if start_rep > rate_threshold:  # backcast
+        # count from threshold on
+        bc_rates = np.arange(rate_threshold, start_rep, bc_step)
+        bc_df = pd.DataFrame({
+            COLUMNS.location_id: location_id,
+            COLUMNS.ln_age_death_rate: np.flip(bc_rates)
+        })
+
+        # remove fractional step from last (we force the threshold day to
+        # be 0, so the partial day ends up getting added onto the first
+        # day) no longer add date, since we have partial days
+        if df[COLUMNS.days].min() != 0:
+            raise ValueError(f'First day is not 0, as expected... (location_id: {location_id})')
+        bc_df[COLUMNS.days] = -bc_df.index - (start_rep - bc_rates[-1]) / bc_step
+
+        # don't project more than 10 days back, or we will have PROBLEMS
+        bc_df = (bc_df
+                 .loc[bc_df[COLUMNS.days] >= -10, out_columns]
+                 .reset_index(drop=True))
+    elif start_rep == rate_threshold:
+        bc_df = pd.DataFrame(columns=out_columns)
+    else:
+        raise ValueError('First value is below threshold, should not be possible.')
+
+    return bc_df
+
+
+
+
+
