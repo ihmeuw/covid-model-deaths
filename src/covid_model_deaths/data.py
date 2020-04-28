@@ -261,8 +261,3 @@ def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int
         raise ValueError('First value is below threshold, should not be possible.')
 
     return bc_df
-
-
-
-
-
