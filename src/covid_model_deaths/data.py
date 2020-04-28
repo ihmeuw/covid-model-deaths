@@ -103,49 +103,16 @@ def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFr
     df = df.sort_values(sort_columns).reset_index(drop=True)
     df = drop_lagged_deaths_by_location(df)
     df = add_moving_average_ln_asdr(df, rate_threshold)
+    df = add_days_since_last_day_of_two_deaths(df)
 
-    ###############################
-    # RE-APPLY SECOND DEATH INDEX #
-    ###############################
-    # TODO: Important things get their own functions.
-    # after we expand out days in the moving average bit, need to check we
-    # don't do so for days at the beginning with 2 deaths (happens in
-    # Other Counties, WA)
-    # make sure we still start at last day of two deaths
-    df[COLUMNS.last_day_two] = (df
-                                .loc[df[COLUMNS.deaths] == 2]
-                                .groupby(COLUMNS.location, as_index=False)[COLUMNS.date]
-                                .transform('max'))
-    df = df.loc[(df[COLUMNS.last_day_two].isnull()) | (df[COLUMNS.date] == df[COLUMNS.last_day_two])]
-    df[COLUMNS.two_date] = df.groupby(COLUMNS.location_id, as_index=False).Date.transform('min')
-
-    # just want second death on, and only where total deaths
-    df = df.loc[df[COLUMNS.date] >= df[COLUMNS.two_date]]
-    df[COLUMNS.days] = df[COLUMNS.date] - df[COLUMNS.two_date]
-    df[COLUMNS.days] = df[COLUMNS.days].apply(lambda x: x.days)
-    groupby_cols = [COLUMNS.location_id, COLUMNS.location, COLUMNS.country, COLUMNS.days]
-    df = df.sort_values(groupby_cols).reset_index(drop=True)
-    ###################################
-
-    # get delta
-    obs_diff = df[COLUMNS.obs_ln_age_death_rate].values[1:] - df[COLUMNS.obs_ln_age_death_rate].values[:-1]
-    diff = df[COLUMNS.ln_age_death_rate].values[1:] - df[COLUMNS.ln_age_death_rate].values[:-1]
-    df[COLUMNS.delta_ln_asdr] = np.nan
-    df[COLUMNS.delta_ln_asdr][1:] = diff
-    df[COLUMNS.observed_delta_ln_asdr] = np.nan
-    df[COLUMNS.observed_delta_ln_asdr][1:] = obs_diff
-
-    groupby_cols = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location]
-
-    df[COLUMNS.first_point] = df.groupby(groupby_cols, as_index=False)[COLUMNS.days].transform('min')
-    df.loc[df[COLUMNS.days] == df[COLUMNS.first_point], COLUMNS.delta_ln_asdr] = np.nan
-    df.loc[df[COLUMNS.days] == df[COLUMNS.first_point], COLUMNS.observed_delta_ln_asdr] = np.nan
+    df = add_change_in_rate(df, COLUMNS.ln_age_death_rate, COLUMNS.delta_ln_asdr)
+    df = add_change_in_rate(df, COLUMNS.obs_ln_age_death_rate, COLUMNS.observed_delta_ln_asdr)
 
     # project backwards using lagged ln(asdr)
     delta_df = df.copy()
     delta_df = delta_df.loc[(delta_df[COLUMNS.days] > 0) & (delta_df[COLUMNS.days] <= 5)]
-    delta_df = delta_df.groupby(groupby_cols, as_index=False)[COLUMNS.delta_ln_asdr].mean()
-    not_nursing_home = ~delta_df[COLUMNS.location].isin([LOCATIONS.life_care.name])
+    delta_df = delta_df.groupby(COLUMNS.location_id, as_index=False)[COLUMNS.delta_ln_asdr].mean()
+    not_nursing_home = ~delta_df[COLUMNS.location_id].isin([LOCATIONS.life_care.id])
     delta_df = delta_df.loc[(delta_df[COLUMNS.delta_ln_asdr] > 1e-4) & not_nursing_home]
 
     bc_location_ids = delta_df[COLUMNS.location_id].to_list()
@@ -222,6 +189,46 @@ def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float) -> pd.
             .fillna(method='pad')
             .reset_index())
 
+    return data
+
+
+def add_days_since_last_day_of_two_deaths(data: pd.DataFrame) -> pd.DataFrame:
+    """Compute days since the last day with two deaths by location."""
+    # after we expand out days in the moving average bit, need to check we
+    # don't do so for days at the beginning with 2 deaths (happens in
+    # Other Counties, WA)
+    # make sure we still start at last day of two deaths
+    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.deaths]
+    assert set(required_columns).issubset(data.columns)
+    data['last_day_two'] = (data
+                            .loc[data[COLUMNS.deaths] == 2]
+                            .groupby(COLUMNS.location_id, as_index=False)[COLUMNS.date]
+                            .transform('max'))
+    data = data.loc[(data['last_day_two'].isnull()) | (data[COLUMNS.date] == data['last_day_two'])]
+    data['two_date'] = data.groupby(COLUMNS.location_id, as_index=False)[COLUMNS.date].transform('min')
+
+    # just want second death on, and only where total deaths
+    data = data.loc[data[COLUMNS.date] >= data['two_date']]
+    data[COLUMNS.days] = data[COLUMNS.date] - data['two_date']
+    data[COLUMNS.days] = data[COLUMNS.days].apply(lambda x: x.days)
+    data = data.sort_values([COLUMNS.location_id, COLUMNS.date]).reset_index(drop=True)
+    # FIXME: I'm like 90% sure these columns aren't used anywhere else.
+    #  But they get written to outputs.
+    # del data['last_day_two']
+    # del data['two_date']
+    return data
+
+
+def add_change_in_rate(data: pd.DataFrame, measure: str, delta_measure: str) -> pd.DataFrame:
+    """Compute and assign the daily difference in the measure."""
+    required_columns = [COLUMNS.location_id, measure]
+    assert set(required_columns).issubset(data.columns)
+    data[delta_measure] = (
+        data
+        .groupby(COLUMNS.location_id)
+        .apply(lambda x: x.set_index(COLUMNS.date)[measure] - x.set_index(COLUMNS.date)[measure].shift(1))
+        .reset_index()[measure]
+    )
     return data
 
 
