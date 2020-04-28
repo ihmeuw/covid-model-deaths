@@ -189,6 +189,7 @@ def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float) -> pd.
     return data
 
 
+# FIXME: This is also really a main function :-/
 def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
     df = df.copy()
     sort_columns = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location, COLUMNS.date]
