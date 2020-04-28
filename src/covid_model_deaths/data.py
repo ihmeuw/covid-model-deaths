@@ -206,6 +206,7 @@ def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float) -> pd.
 
 
 def add_days_since_last_day_of_two_deaths(data: pd.DataFrame) -> pd.DataFrame:
+    """Compute days since the last day with two deaths by location."""
     # after we expand out days in the moving average bit, need to check we
     # don't do so for days at the beginning with 2 deaths (happens in
     # Other Counties, WA)
