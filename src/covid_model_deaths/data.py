@@ -220,8 +220,8 @@ def add_days_since_last_day_of_two_deaths(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_change_in_rate(data: pd.DataFrame, measure: str, delta_measure: str) -> pd.DataFrame:
-    """Compute and assigne the daily difference in the measure."""
-    required_columns = [COLUMNS.location_id, COLUMNS.location_id, measure]
+    """Compute and assign the daily difference in the measure."""
+    required_columns = [COLUMNS.location_id, measure]
     assert set(required_columns).issubset(data.columns)
     data[delta_measure] = (
         data
