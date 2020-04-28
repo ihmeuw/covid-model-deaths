@@ -222,10 +222,6 @@ def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float) -> pd.
             .fillna(method='pad')
             .reset_index())
 
-    # TODO: Remove when we can excavate more of the days stuff.
-    data[COLUMNS.days] = (data.groupby(COLUMNS.location_id, as_index=False)
-                          .apply(lambda x: pd.Series(range(len(x)), index=x.index, name=COLUMNS.days))
-                          .droplevel(0))
     return data
 
 
