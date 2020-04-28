@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 import numpy as np
 import pandas as pd
 
@@ -73,53 +71,6 @@ def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int
     return bc_df
 
 
-def moving_3day_avg(day, data):
-    # determine difference
-    days = np.array([day-1, day, day+1])
-    days = days[days >= 0]
-    days = days[days <= data[COLUMNS.days].max()]
-    avg = data.loc[data[COLUMNS.days].isin(days), COLUMNS.ln_age_death_rate].mean()
-    return avg
-
-
-def moving_average_log_age_standardized_death_ratio(df: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
-    if df[COLUMNS.location_id].unique().size != 1:
-        raise ValueError('Multiple locations in dataset.')
-    if df[COLUMNS.days].min() != 0:
-        raise ValueError('Not starting at 0')
-
-    full_day_range = pd.DataFrame({COLUMNS.days: np.arange(df[COLUMNS.days].min(), df[COLUMNS.days].max()+1)})
-    df = df.merge(full_day_range, how='outer')
-    df = df.sort_values(COLUMNS.days).reset_index(drop=True)
-
-    no_date = df[COLUMNS.date].isnull()
-    df.loc[no_date, COLUMNS.date] = (df
-                                     .loc[no_date, COLUMNS.days]
-                                     .apply(lambda x: df[COLUMNS.date].min() + timedelta(days=x)))
-    # TODO: Document.
-    df = df.fillna(method='pad')
-
-    # get diffs
-    moving_average = [moving_3day_avg(i, df) for i in df[COLUMNS.days]]
-    df[COLUMNS.obs_ln_age_death_rate] = df[COLUMNS.ln_age_death_rate]
-    df[COLUMNS.ln_age_death_rate] = moving_average
-
-    # replace last point w/ daily value over 3->2 and 2->1 and the first
-    # with 1->2, 2->3; use observed if 3 data points or less
-    if len(df) > 3:
-        last_step = np.mean(np.array(moving_average[-3:-1]) - np.array(moving_average[-4:-2]))
-        df[COLUMNS.ln_age_death_rate][len(df)-1] = (df[COLUMNS.ln_age_death_rate][len(df)-2] + last_step)
-
-        first_step = np.mean(np.array(moving_average[2:4]) - np.array(moving_average[1:3]))
-        df[COLUMNS.ln_age_death_rate][0] = df[COLUMNS.ln_age_death_rate][1] - first_step
-        if df[COLUMNS.ln_age_death_rate][0] < rate_threshold:
-            df[COLUMNS.ln_age_death_rate][0] = rate_threshold
-    else:
-        df[COLUMNS.ln_age_death_rate] = df[COLUMNS.obs_ln_age_death_rate]
-
-    return df
-
-
 def drop_lagged_deaths_by_location(data: pd.DataFrame) -> pd.DataFrame:
     """Drop rows from data where no new deaths occurred on the current day.
 
@@ -144,16 +95,111 @@ def drop_lagged_deaths_by_location(data: pd.DataFrame) -> pd.DataFrame:
     return data.loc[~lagged_deaths]
 
 
+def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> pd.Series:
+    """Expands a dataset over date and performs a moving average.
+
+    Parameters
+    ----------
+    data
+        The dataset to perform the moving average over.
+    measure
+        The column name in the dataset to average.
+    window
+        The number of days to average over.
+
+    Returns
+    -------
+        A series indexed by the expanded date with the measure averaged
+        over the window.
+
+    """
+    required_columns = [COLUMNS.date, measure]
+    data = data.loc[:, required_columns].set_index(COLUMNS.date).loc[:, measure]
+
+    if len(data) < window:
+        return data
+
+    moving_average = (data
+                      .asfreq('D', method='pad')
+                      .rolling(window=window, min_periods=1, center=True)
+                      .mean())
+    if len(moving_average) > window:
+        # replace last point w/ daily value over 3->2 and 2->1 and the first
+        # with 1->2, 2->3; use observed if 3 data points or less
+        last_step = np.mean(np.array(moving_average[-window:-1]) - np.array(moving_average[-window - 1:-2]))
+        moving_average.iloc[-1] = moving_average.iloc[-2] + last_step
+
+        first_step = np.mean(np.array(moving_average[2:window + 1]) - np.array(moving_average[1:window]))
+        moving_average.iloc[0] = moving_average.iloc[1] - first_step
+    return moving_average
+
+
+def expanding_moving_average_by_location(data: pd.DataFrame, measure: str, window: int = 3) -> pd.Series:
+    """Expands a dataset over date and performs a moving average by location.
+
+    Parameters
+    ----------
+    data
+        The dataset to perform the moving average over.
+    measure
+        The column name in the dataset to average.
+    window
+        The number of days to average over.
+
+    Returns
+    -------
+        A dataframe indexed by location id and the expanded date with the
+        measure averaged over the window.
+
+    """
+    required_columns = [COLUMNS.location_id, COLUMNS.date, measure]
+    moving_average = (
+        data.loc[:, required_columns]
+            .groupby(COLUMNS.location_id)
+            .apply(lambda x: expanding_moving_average(x, measure, window))
+    )
+    return moving_average
+
+
+def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
+    """Smooths over the log age specific death rate.
+
+    Parameters
+    ----------
+    data
+        The data with the age specific death rate to smooth over.
+    rate_threshold
+        The minimum age specific death rate.  Values produced in the
+        averaging will be pinned to this.
+
+    Returns
+    -------
+        The same data with the log asdr replaced with its average and a new
+        column with the original observed asdr.
+
+    """
+    data[COLUMNS.obs_ln_age_death_rate] = data[COLUMNS.ln_age_death_rate]
+    moving_average = expanding_moving_average_by_location(data, COLUMNS.ln_age_death_rate)
+    # noinspection PyTypeChecker
+    moving_average[moving_average < rate_threshold] = rate_threshold
+    data = data.set_index([COLUMNS.location_id, COLUMNS.date])
+    data = (pd.concat([data.drop(columns=COLUMNS.ln_age_death_rate), moving_average], axis=1)
+            .fillna(method='pad')
+            .reset_index())
+
+    # TODO: Remove when we can excavate more of the days stuff.
+    data[COLUMNS.days] = (data.groupby(COLUMNS.location_id, as_index=False)
+                          .apply(lambda x: pd.Series(range(len(x)), index=x.index, name=COLUMNS.days))
+                          .droplevel(0))
+    return data
+
+
 def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
     df = df.copy()
     sort_columns = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location, COLUMNS.date]
     df = df.sort_values(sort_columns).reset_index(drop=True)
     df = drop_lagged_deaths_by_location(df)
-
-    # fill in missing days and smooth
-    loc_df_list = [df.loc[df['location_id'] == loc_id] for loc_id in df['location_id'].unique()]
-    df = pd.concat([moving_average_log_age_standardized_death_ratio(loc_df, rate_threshold)
-                    for loc_df in loc_df_list]).reset_index(drop=True)
+    df = add_moving_average_ln_asdr(df, rate_threshold)
 
     ###############################
     # RE-APPLY SECOND DEATH INDEX #
