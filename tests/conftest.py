@@ -56,4 +56,11 @@ def process_death_df() -> pd.DataFrame:
     return _load('process_death_df.csv')
 
 
+@pytest.fixture
+def moving_average_input() -> pd.DataFrame:
+    return _load('moving_average_input.csv')
 
+
+@pytest.fixture
+def moving_average_output() -> pd.DataFrame:
+    return _load('moving_average_output.csv')

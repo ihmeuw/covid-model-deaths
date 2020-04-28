@@ -120,26 +120,35 @@ def moving_average_log_age_standardized_death_ratio(df: pd.DataFrame, rate_thres
     return df
 
 
+def drop_lagged_deaths_by_location(data: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows from data where no new deaths occurred on the current day.
+
+    Parameters
+    ----------
+    data
+        The dataset containing lagged deaths.
+
+    Returns
+    -------
+        The same dataset with rows containing lagged deaths removed.
+
+    """
+    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.deaths]
+    lagged_deaths = (
+        data.loc[:, required_columns]
+            .groupby(COLUMNS.location_id, as_index=False)
+            .apply(lambda x: ((x[COLUMNS.date] == x[COLUMNS.date].max())
+                              & (x[COLUMNS.deaths] == x[COLUMNS.deaths].shift(1))))
+            .droplevel(0)
+    )
+    return data.loc[~lagged_deaths]
+
+
 def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
     df = df.copy()
     sort_columns = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location, COLUMNS.date]
     df = df.sort_values(sort_columns).reset_index(drop=True)
-
-    # get delta, drop last day if it does not contain new deaths (assume lag)
-    diff = df[COLUMNS.ln_age_death_rate].values[1:] - df[COLUMNS.ln_age_death_rate].values[:-1]
-    df[COLUMNS.delta_ln_asdr] = np.nan
-    df[COLUMNS.delta_ln_asdr][1:] = diff
-
-    groupby_cols = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location]
-    df[COLUMNS.first_point] = df.groupby(groupby_cols, as_index=False)[COLUMNS.days].transform('min')
-    df.loc[df[COLUMNS.days] == df[COLUMNS.first_point], COLUMNS.delta_ln_asdr] = np.nan
-    df[COLUMNS.last_point] = df.groupby(groupby_cols, as_index=False)[COLUMNS.days].transform('max')
-    df = df.loc[~((df[COLUMNS.days] == df[COLUMNS.last_point]) & (df[COLUMNS.delta_ln_asdr] == 0))]
-
-    # clean up (will add delta back after expanding)
-    del df[COLUMNS.first_point]
-    del df[COLUMNS.last_point]
-    del df[COLUMNS.delta_ln_asdr]
+    df = drop_lagged_deaths_by_location(df)
 
     # fill in missing days and smooth
     loc_df_list = [df.loc[df['location_id'] == loc_id] for loc_id in df['location_id'].unique()]
