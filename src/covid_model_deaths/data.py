@@ -5,6 +5,59 @@ from covid_model_deaths.globals import COLUMNS, LOCATIONS
 from covid_model_deaths.preprocessing import expanding_moving_average_by_location
 
 
+def compute_backcast_log_age_specific_death_rates(df: pd.DataFrame, age_pop_df: pd.DataFrame,
+                                                  age_death_df: pd.DataFrame, standardize_location_id: int,
+                                                  subnat: bool, rate_threshold: int) -> pd.DataFrame:
+    df = process_death_df(df, subnat)
+    # get implied death rate based on "standard" population (using average
+    # of all possible locations atm)
+    standard_age_death_df = get_standard_age_death_df(age_death_df)
+    location_to_standardize = age_pop_df[COLUMNS.location_id] == standardize_location_id
+    age_pattern_df = age_pop_df.loc[location_to_standardize].merge(standard_age_death_df)
+
+    implied_df = standard_age_death_df.merge(age_pop_df)
+    implied_df[COLUMNS.implied_death_rate] = implied_df[COLUMNS.death_rate_bad] * implied_df[COLUMNS.age_group_weight]
+    implied_df = implied_df.groupby(COLUMNS.location_id, as_index=False)[COLUMNS.implied_death_rate].sum()
+    df = df.merge(implied_df)
+
+    # age-standardize
+    df[COLUMNS.age_standardized_death_rate] = df.apply(
+        lambda x: get_asdr(
+            x[COLUMNS.death_rate],
+            x[COLUMNS.implied_death_rate],
+            age_pattern_df),
+        axis=1)
+    df[COLUMNS.ln_age_death_rate] = np.log(df[COLUMNS.age_standardized_death_rate])
+
+    # keep above our threshold death rate, start counting days from there
+    df = df.loc[df[COLUMNS.ln_age_death_rate] >= rate_threshold]
+
+    df[COLUMNS.day1] = df.groupby([COLUMNS.country, COLUMNS.location], as_index=False)[COLUMNS.date].transform('min')
+    df[COLUMNS.days] = df[COLUMNS.date] - df[COLUMNS.day1]
+    df[COLUMNS.days] = df[COLUMNS.days].apply(lambda x: x.days)
+    del df[COLUMNS.day1]
+
+    # for Hubei, move it a few days out
+    # TODO: document this better.
+    if 'Hubei' in df[COLUMNS.location].to_list():
+        df.loc[df[COLUMNS.location] == 'Hubei', COLUMNS.days] += 3
+        print('Moving Hubei out a few days')
+
+    # interpolate back to threshold
+    df = backcast_all_locations(df, rate_threshold)
+    return df.reset_index(drop=True)
+
+
+####################
+# Helper functions #
+####################
+# TODO:
+#  - Excavate library code.
+#  - Vectorize where possible.
+#  - Leave behind processing specific to produce the computation
+#  - Move processing-specific code to application package
+#  - Wrap in cli.
+
 def process_death_df(death_df: pd.DataFrame, subnat: bool) -> pd.DataFrame:
     """Subset and filter the death data."""
     death_df = death_df.sort_values([COLUMNS.country, COLUMNS.location, COLUMNS.date]).reset_index(drop=True)
@@ -36,6 +89,11 @@ def get_standard_age_death_df(age_death_df: pd.DataFrame) -> pd.DataFrame:
     global_loc = age_death_df[COLUMNS.location_id] == LOCATIONS.global_aggregate.id
     keep_columns = [COLUMNS.age_group, COLUMNS.death_rate_bad]
     return age_death_df.loc[global_loc, keep_columns].reset_index(drop=True)
+
+
+def get_asdr(true_rate, implied_rate, age_pattern_df: pd.DataFrame):
+    scaled_rate = age_pattern_df['death_rate'] * (true_rate / implied_rate)
+    return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
 
 
 def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int,
@@ -202,52 +260,3 @@ def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFr
     df.loc[df[COLUMNS.first_point] < 0, COLUMNS.days] = df[COLUMNS.days] - df[COLUMNS.first_point]
     del df[COLUMNS.first_point]
     return df
-
-
-def get_asdr(true_rate, implied_rate, age_pattern_df: pd.DataFrame):
-    scaled_rate = age_pattern_df['death_rate'] * (true_rate / implied_rate)
-    return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
-
-
-def compute_backcast_log_age_specific_death_rates(df: pd.DataFrame, age_pop_df: pd.DataFrame,
-                                                  age_death_df: pd.DataFrame, standardize_location_id: int,
-                                                  subnat: bool, rate_threshold: int) -> pd.DataFrame:
-    df = process_death_df(df, subnat)
-
-    # get implied death rate based on "standard" population (using average
-    # of all possible locations atm)
-    standard_age_death_df = get_standard_age_death_df(age_death_df)
-    location_to_standardize = age_pop_df[COLUMNS.location_id] == standardize_location_id
-    age_pattern_df = age_pop_df.loc[location_to_standardize].merge(standard_age_death_df)
-
-    implied_df = standard_age_death_df.merge(age_pop_df)
-    implied_df[COLUMNS.implied_death_rate] = implied_df[COLUMNS.death_rate_bad] * implied_df[COLUMNS.age_group_weight]
-    implied_df = implied_df.groupby(COLUMNS.location_id, as_index=False)[COLUMNS.implied_death_rate].sum()
-    df = df.merge(implied_df)
-
-    # age-standardize
-    df[COLUMNS.age_standardized_death_rate] = df.apply(
-        lambda x: get_asdr(
-            x[COLUMNS.death_rate],
-            x[COLUMNS.implied_death_rate],
-            age_pattern_df),
-        axis=1)
-    df[COLUMNS.ln_age_death_rate] = np.log(df[COLUMNS.age_standardized_death_rate])
-
-    # keep above our threshold death rate, start counting days from there
-    df = df.loc[df[COLUMNS.ln_age_death_rate] >= rate_threshold]
-
-    df[COLUMNS.day1] = df.groupby([COLUMNS.country, COLUMNS.location], as_index=False)[COLUMNS.date].transform('min')
-    df[COLUMNS.days] = df[COLUMNS.date] - df[COLUMNS.day1]
-    df[COLUMNS.days] = df[COLUMNS.days].apply(lambda x: x.days)
-    del df[COLUMNS.day1]
-
-    # for Hubei, move it a few days out
-    # TODO: document this better.
-    if 'Hubei' in df[COLUMNS.location].to_list():
-        df.loc[df[COLUMNS.location] == 'Hubei', COLUMNS.days] += 3
-        print('Moving Hubei out a few days')
-
-    # interpolate back to threshold
-    df = backcast_all_locations(df, rate_threshold)
-    return df.reset_index(drop=True)
