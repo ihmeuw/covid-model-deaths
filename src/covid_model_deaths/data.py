@@ -103,29 +103,9 @@ def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFr
     df = df.sort_values(sort_columns).reset_index(drop=True)
     df = drop_lagged_deaths_by_location(df)
     df = add_moving_average_ln_asdr(df, rate_threshold)
+    df = add_days_since_last_day_of_two_deaths(df)
 
-    ###############################
-    # RE-APPLY SECOND DEATH INDEX #
-    ###############################
-    # TODO: Important things get their own functions.
-    # after we expand out days in the moving average bit, need to check we
-    # don't do so for days at the beginning with 2 deaths (happens in
-    # Other Counties, WA)
-    # make sure we still start at last day of two deaths
-    df[COLUMNS.last_day_two] = (df
-                                .loc[df[COLUMNS.deaths] == 2]
-                                .groupby(COLUMNS.location, as_index=False)[COLUMNS.date]
-                                .transform('max'))
-    df = df.loc[(df[COLUMNS.last_day_two].isnull()) | (df[COLUMNS.date] == df[COLUMNS.last_day_two])]
-    df[COLUMNS.two_date] = df.groupby(COLUMNS.location_id, as_index=False).Date.transform('min')
 
-    # just want second death on, and only where total deaths
-    df = df.loc[df[COLUMNS.date] >= df[COLUMNS.two_date]]
-    df[COLUMNS.days] = df[COLUMNS.date] - df[COLUMNS.two_date]
-    df[COLUMNS.days] = df[COLUMNS.days].apply(lambda x: x.days)
-    groupby_cols = [COLUMNS.location_id, COLUMNS.location, COLUMNS.country, COLUMNS.days]
-    df = df.sort_values(groupby_cols).reset_index(drop=True)
-    ###################################
 
     # get delta
     obs_diff = df[COLUMNS.obs_ln_age_death_rate].values[1:] - df[COLUMNS.obs_ln_age_death_rate].values[:-1]
@@ -222,6 +202,32 @@ def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float) -> pd.
             .fillna(method='pad')
             .reset_index())
 
+    return data
+
+
+def add_days_since_last_day_of_two_deaths(data: pd.DataFrame) -> pd.DataFrame:
+    # after we expand out days in the moving average bit, need to check we
+    # don't do so for days at the beginning with 2 deaths (happens in
+    # Other Counties, WA)
+    # make sure we still start at last day of two deaths
+    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.deaths]
+    assert set(required_columns).issubset(data.columns)
+    data['last_day_two'] = (data
+                            .loc[data[COLUMNS.deaths] == 2]
+                            .groupby(COLUMNS.location_id, as_index=False)[COLUMNS.date]
+                            .transform('max'))
+    data = data.loc[(data['last_day_two'].isnull()) | (data[COLUMNS.date] == data['last_day_two'])]
+    data['two_date'] = data.groupby(COLUMNS.location_id, as_index=False)[COLUMNS.date].transform('min')
+
+    # just want second death on, and only where total deaths
+    data = data.loc[data[COLUMNS.date] >= data['two_date']]
+    data[COLUMNS.days] = data[COLUMNS.date] - data['two_date']
+    data[COLUMNS.days] = data[COLUMNS.days].apply(lambda x: x.days)
+    data = data.sort_values([COLUMNS.location_id, COLUMNS.date]).reset_index(drop=True)
+    # FIXME: I'm like 90% sure these columns aren't used anywhere else.
+    #  But they get written to outputs.
+    # del data['last_day_two']
+    # del data['two_date']
     return data
 
 
