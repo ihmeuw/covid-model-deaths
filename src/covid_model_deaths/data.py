@@ -101,6 +101,7 @@ def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFr
     df = df.copy()
     sort_columns = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location, COLUMNS.date]
     df = df.sort_values(sort_columns).reset_index(drop=True)
+
     df = drop_lagged_deaths_by_location(df)
     df = add_moving_average_ln_asdr(df, rate_threshold)
     df = add_days_since_last_day_of_two_deaths(df)
@@ -108,22 +109,14 @@ def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFr
     df = add_change_in_rate(df, COLUMNS.ln_age_death_rate, COLUMNS.delta_ln_asdr)
     df = add_change_in_rate(df, COLUMNS.obs_ln_age_death_rate, COLUMNS.observed_delta_ln_asdr)
 
-    # project backwards using lagged ln(asdr)
-    delta_df = df.copy()
-    delta_df = delta_df.loc[(delta_df[COLUMNS.days] > 0) & (delta_df[COLUMNS.days] <= 5)]
-    delta_df = delta_df.groupby(COLUMNS.location_id, as_index=False)[COLUMNS.delta_ln_asdr].mean()
-    not_nursing_home = ~delta_df[COLUMNS.location_id].isin([LOCATIONS.life_care.id])
-    delta_df = delta_df.loc[(delta_df[COLUMNS.delta_ln_asdr] > 1e-4) & not_nursing_home]
-
-    bc_location_ids = delta_df[COLUMNS.location_id].to_list()
+    daily_change = get_backcast_daily_change_by_location(df, COLUMNS.delta_ln_asdr)
     bc_df = pd.concat([
         backcast_log_age_standardized_death_ratio(
             df.loc[df[COLUMNS.location_id] == bc_location_id],
             bc_location_id,
-            delta_df.loc[delta_df[COLUMNS.location_id] == bc_location_id, COLUMNS.delta_ln_asdr].item(),
+            daily_change.at[bc_location_id],
             rate_threshold,
-        )
-        for bc_location_id in bc_location_ids
+        ) for bc_location_id in daily_change.index
     ])
     df = df.append(bc_df)
     df = df.sort_values([COLUMNS.location_id, COLUMNS.days]).reset_index(drop=True)
@@ -210,7 +203,7 @@ def add_days_since_last_day_of_two_deaths(data: pd.DataFrame) -> pd.DataFrame:
     # just want second death on, and only where total deaths
     data = data.loc[data[COLUMNS.date] >= data['two_date']]
     data[COLUMNS.days] = data[COLUMNS.date] - data['two_date']
-    data[COLUMNS.days] = data[COLUMNS.days].apply(lambda x: x.days)
+    data[COLUMNS.days] = data[COLUMNS.days].dt.days
     data = data.sort_values([COLUMNS.location_id, COLUMNS.date]).reset_index(drop=True)
     # FIXME: I'm like 90% sure these columns aren't used anywhere else.
     #  But they get written to outputs.
@@ -230,6 +223,41 @@ def add_change_in_rate(data: pd.DataFrame, measure: str, delta_measure: str) -> 
         .reset_index()[measure]
     )
     return data
+
+
+def get_backcast_daily_change_by_location(data: pd.DataFrame, measure: str,
+                                          average_window: int = 5, cutoff: float = 1e-4) -> pd.Series:
+    """Compute the incremental change in the measure for the backcast.
+
+    Parameters
+    ----------
+    data
+        The data to compute the daily change for.
+    measure
+        The specific measure in the data to compute the daily change on.
+    average_window
+        The window size over which we wish to average in order to to get the
+        daily change. The window used will start with the first day of data.
+    cutoff
+        The value below which we will not compute a daily change for back
+        cast.
+
+    Returns
+    -------
+        The daily change in the measure by location to use for back casting.
+
+    """
+    required_columns = [COLUMNS.location_id, COLUMNS.days, measure]
+    assert set(required_columns).issubset(data.columns)
+    # FIXME: Backcast should not care about this piece
+    non_nursing_home = ~data[COLUMNS.location_id].isin([LOCATIONS.life_care.id])
+    in_window = (0 < data[COLUMNS.days]) & (data[COLUMNS.days] <= average_window)
+    daily_change = (data
+                    .loc[in_window & non_nursing_home, [COLUMNS.location_id, measure]]
+                    .groupby(COLUMNS.location_id)[measure]
+                    .mean())
+    daily_change = daily_change.loc[daily_change > cutoff]
+    return daily_change
 
 
 def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int,
