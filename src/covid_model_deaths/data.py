@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from covid_model_deaths.globals import COLUMNS, LOCATIONS
-from covid_model_deaths.preprocessing import expanding_moving_average_by_location
+from covid_model_deaths.preprocessing import expanding_moving_average_by_location, backcast_all_locations
 
 
 def compute_backcast_log_age_specific_death_rates(df: pd.DataFrame, age_pop_df: pd.DataFrame,
@@ -42,6 +42,13 @@ def compute_backcast_log_age_specific_death_rates(df: pd.DataFrame, age_pop_df: 
     if 'Hubei' in df[COLUMNS.location].to_list():
         df.loc[df[COLUMNS.location] == 'Hubei', COLUMNS.days] += 3
         print('Moving Hubei out a few days')
+
+    sort_columns = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location, COLUMNS.date]
+    df = df.sort_values(sort_columns).reset_index(drop=True)
+
+    df = drop_lagged_deaths_by_location(df)
+    df = add_moving_average_ln_asdr(df, rate_threshold)
+    df = add_days_since_last_day_of_two_deaths(df)
 
     # interpolate back to threshold
     df = backcast_all_locations(df, rate_threshold)
@@ -94,47 +101,6 @@ def get_standard_age_death_df(age_death_df: pd.DataFrame) -> pd.DataFrame:
 def get_asdr(true_rate, implied_rate, age_pattern_df: pd.DataFrame):
     scaled_rate = age_pattern_df['death_rate'] * (true_rate / implied_rate)
     return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
-
-
-# FIXME: This is also really a main function :-/
-def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFrame:
-    df = df.copy()
-    sort_columns = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location, COLUMNS.date]
-    df = df.sort_values(sort_columns).reset_index(drop=True)
-    df = drop_lagged_deaths_by_location(df)
-    df = add_moving_average_ln_asdr(df, rate_threshold)
-    df = add_days_since_last_day_of_two_deaths(df)
-
-    df = add_change_in_rate(df, COLUMNS.ln_age_death_rate, COLUMNS.delta_ln_asdr)
-    df = add_change_in_rate(df, COLUMNS.obs_ln_age_death_rate, COLUMNS.observed_delta_ln_asdr)
-
-    # project backwards using lagged ln(asdr)
-    delta_df = df.copy()
-    delta_df = delta_df.loc[(delta_df[COLUMNS.days] > 0) & (delta_df[COLUMNS.days] <= 5)]
-    delta_df = delta_df.groupby(COLUMNS.location_id, as_index=False)[COLUMNS.delta_ln_asdr].mean()
-    not_nursing_home = ~delta_df[COLUMNS.location_id].isin([LOCATIONS.life_care.id])
-    delta_df = delta_df.loc[(delta_df[COLUMNS.delta_ln_asdr] > 1e-4) & not_nursing_home]
-
-    bc_location_ids = delta_df[COLUMNS.location_id].to_list()
-    bc_df = pd.concat([
-        backcast_log_age_standardized_death_ratio(
-            df.loc[df[COLUMNS.location_id] == bc_location_id],
-            bc_location_id,
-            delta_df.loc[delta_df[COLUMNS.location_id] == bc_location_id, COLUMNS.delta_ln_asdr].item(),
-            rate_threshold,
-        )
-        for bc_location_id in bc_location_ids
-    ])
-    df = df.append(bc_df)
-    df = df.sort_values([COLUMNS.location_id, COLUMNS.days]).reset_index(drop=True)
-    # TODO: Document this assumption about back-filling.
-    fill_cols = [COLUMNS.location, COLUMNS.country, COLUMNS.population]
-    df[fill_cols] = df[fill_cols].fillna(method='backfill')
-    df[COLUMNS.location_id] = df[COLUMNS.location_id].astype(int)
-    df[COLUMNS.first_point] = df.groupby([COLUMNS.country, COLUMNS.location], as_index=False)[COLUMNS.days].transform('min')
-    df.loc[df[COLUMNS.first_point] < 0, COLUMNS.days] = df[COLUMNS.days] - df[COLUMNS.first_point]
-    del df[COLUMNS.first_point]
-    return df
 
 
 def drop_lagged_deaths_by_location(data: pd.DataFrame) -> pd.DataFrame:
@@ -210,57 +176,10 @@ def add_days_since_last_day_of_two_deaths(data: pd.DataFrame) -> pd.DataFrame:
     # just want second death on, and only where total deaths
     data = data.loc[data[COLUMNS.date] >= data['two_date']]
     data[COLUMNS.days] = data[COLUMNS.date] - data['two_date']
-    data[COLUMNS.days] = data[COLUMNS.days].apply(lambda x: x.days)
+    data[COLUMNS.days] = data[COLUMNS.days].dt.days
     data = data.sort_values([COLUMNS.location_id, COLUMNS.date]).reset_index(drop=True)
     # FIXME: I'm like 90% sure these columns aren't used anywhere else.
     #  But they get written to outputs.
     # del data['last_day_two']
     # del data['two_date']
     return data
-
-
-def add_change_in_rate(data: pd.DataFrame, measure: str, delta_measure: str) -> pd.DataFrame:
-    """Compute and assign the daily difference in the measure."""
-    required_columns = [COLUMNS.location_id, measure]
-    assert set(required_columns).issubset(data.columns)
-    data[delta_measure] = (
-        data
-        .groupby(COLUMNS.location_id)
-        .apply(lambda x: x.set_index(COLUMNS.date)[measure] - x.set_index(COLUMNS.date)[measure].shift(1))
-        .reset_index()[measure]
-    )
-    return data
-
-
-def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int,
-                                              bc_step: int, rate_threshold: float) -> pd.DataFrame:
-    """Backcast the log age standardized death rate back to the rate threshold."""
-    out_columns = [COLUMNS.location_id, COLUMNS.days, COLUMNS.ln_age_death_rate]
-    # get first point
-    start_rep = df.sort_values(COLUMNS.days).reset_index(drop=True)[COLUMNS.ln_age_death_rate][0]
-
-    if start_rep > rate_threshold:  # backcast
-        # count from threshold on
-        bc_rates = np.arange(rate_threshold, start_rep, bc_step)
-        bc_df = pd.DataFrame({
-            COLUMNS.location_id: location_id,
-            COLUMNS.ln_age_death_rate: np.flip(bc_rates)
-        })
-
-        # remove fractional step from last (we force the threshold day to
-        # be 0, so the partial day ends up getting added onto the first
-        # day) no longer add date, since we have partial days
-        if df[COLUMNS.days].min() != 0:
-            raise ValueError(f'First day is not 0, as expected... (location_id: {location_id})')
-        bc_df[COLUMNS.days] = -bc_df.index - (start_rep - bc_rates[-1]) / bc_step
-
-        # don't project more than 10 days back, or we will have PROBLEMS
-        bc_df = (bc_df
-                 .loc[bc_df[COLUMNS.days] >= -10, out_columns]
-                 .reset_index(drop=True))
-    elif start_rep == rate_threshold:
-        bc_df = pd.DataFrame(columns=out_columns)
-    else:
-        raise ValueError('First value is below threshold, should not be possible.')
-
-    return bc_df
