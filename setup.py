@@ -31,8 +31,6 @@ if __name__ == "__main__":
         'sklearn',
         'tqdm',
         'xlrd',
-
-        'curvefit @ git+https://github.com/ihmeuw-msca/CurveFit@product#egg=curvefit'
     ]
 
     test_requirements = [
@@ -48,6 +46,7 @@ if __name__ == "__main__":
     ]
 
     internal_requirements = [
+        'curvefit @ git+https://github.com/ihmeuw-msca/CurveFit@product#egg=curvefit'
         # Only available inside IHME infrastructure
         'db_queries',
     ]
