@@ -1,4 +1,4 @@
-include README.md
+include README.rst
 include Makefile
 
 recursive-include src/covid-model-deaths *.py

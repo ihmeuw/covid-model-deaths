@@ -1,0 +1,20 @@
+language: python
+python:
+  - 3.6
+
+os: linux
+
+install:
+  - pip install .[test,docs]
+script:
+  - make doctest -C docs/
+  - pytest
+deploy:
+  provider: pypi
+  username: "__token__"
+  skip_existing: true
+  distributions: sdist bdist_wheel
+  on:
+    repo: ihmeuw/covid-model-deaths
+    tags: true
+    branch: master
