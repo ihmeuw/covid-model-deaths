@@ -12,13 +12,13 @@ import numpy as np
 import pandas as pd
 import tqdm
 
-from covid_model_deaths.compare_moving_average import CompareAveragingModelDeaths
+from covid_model_deaths.compare_model_average import CompareAveragingModelDeaths
 from covid_model_deaths.data import compute_backcast_log_age_specific_death_rates
 from covid_model_deaths.drawer import Drawer
 from covid_model_deaths.impute_death_threshold import impute_death_threshold as impute_death_threshold_
 import covid_model_deaths.globals as cmd_globals
 from covid_model_deaths.globals import COLUMNS, LOCATIONS
-from covid_model_deaths.moving_average import moving_average_predictions
+from covid_model_deaths.model_average import moving_average_predictions
 from covid_model_deaths.social_distancing_cov import SocialDistCov
 from covid_model_deaths.utilities import submit_curvefit, CompareModelDeaths
 
