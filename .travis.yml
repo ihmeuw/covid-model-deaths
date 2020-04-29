@@ -1,0 +1,19 @@
+language: python
+python:
+- 3.6
+os: linux
+install:
+- pip install .[test,docs]
+script:
+- pytest
+deploy:
+  provider: pypi
+  username: __token__
+  skip_existing: true
+  distributions: sdist bdist_wheel
+  on:
+    repo: ihmeuw/covid-model-deaths
+    tags: true
+    branch: master
+  password:
+    secure: fjL3KOisolRy5p4z9h95FLYQ7eKLBnF6iHLorfH4X/GOSytSy8LXwRfqDiUDLxT7GjuIshrUJVWyVbd3net4hlBObiPWkb9aNnIiPQ8M9z0Ag5HHb5mLIq/RoYlCSZVfXcOeuK1ah0BUXlX6eE6cBd2GLd7PGJrHx5zvYxFGa9TepZUm/GiUQ48Miqva9TeiILz6kiI3RaY7lIbtOVozEBnIiEWvSwwMjl/AsmdJKaOxG5ugDFAhSucxtaWOy16JCWb5cnu811vRswpuc7n0xDsmMpPNww0AcN5IS9uqUliswux6a/6YxUdbQpdedVewsXPiuYEnml34NRn5YFRLVrom0fpksdheXit7GkRR5oU2wWKxV3SER2Y1TqyLuJ56RisYKGs3mBkY6LSMjM8uG2YvWRiO+TJFoqQYCJB2wPV8gBH0Le37ETqaDFUaRWUXtbYUgAhpCYDOJkLpGIkznLHU5xhjPzh3nUXPbAO0l7nTUXg7tIVywIJveMGq7yRw0nst1qYkshda0fZ+Bz1i2rX15WRlN+l6Jaa+i3vt7EcBJ7pJo+R6GQxNny850mQzIfJS0JBBvbTxPmef5TIcOaBSS1W57i+z/h3z9o55YZ1Y9luCMUStVbuaalYQtBGx8Pps1U4AcSqoyvxRNADyh3J/MkH861edLpDoZ7dFscE=
