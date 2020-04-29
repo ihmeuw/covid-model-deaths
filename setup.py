@@ -32,7 +32,6 @@ if __name__ == "__main__":
         'tqdm',
         'xlrd',
 
-        'db_queries',
         'curvefit @ git+https://github.com/ihmeuw-msca/CurveFit@product#egg=curvefit'
     ]
 
@@ -46,6 +45,11 @@ if __name__ == "__main__":
         'sphinx-click',
         'sphinx-autodoc-typehints',
         'sphinx-rtd-theme'
+    ]
+
+    internal_requirements = [
+        # Only available inside IHME infrastructure
+        'db_queries',
     ]
 
     setup(
@@ -65,9 +69,10 @@ if __name__ == "__main__":
 
         install_requires=install_requirements,
         extras_require={
+            'docs': doc_requirements,
+            'internal': internal_requirements,
             'test': test_requirements,
             'dev': test_requirements + doc_requirements,
-            'docs': doc_requirements
         },
 
         zip_safe=False,
