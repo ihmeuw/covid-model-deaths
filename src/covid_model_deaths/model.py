@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
+from datetime import timedelta
 
 
 warnings.filterwarnings('ignore')
@@ -21,7 +22,7 @@ RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
 PSEUDO_SE = 5
-N_B = 13 # 29
+N_B = 29
 PRED_DAYS = 150
 
 
@@ -382,8 +383,8 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     # set bounds on Gaussian mixture weights 
     #   - with expanded mixture elements, set upper for each to 2 and don't have different
     #     limits for final curve
-    gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
-    gm_bounds[-1] = [0.18, 4.]
+    gm_bounds = np.repeat(np.array([[0, 2.]]), n_b, axis=0)
+    #gm_bounds[-1] = [0.18, 4.]
     gm_bounds = np.vstack([gm_bounds, [[0, 10.]]])  # add bounds on sum of weights
     gm_fit_dict = {
         'bounds': gm_bounds
@@ -528,12 +529,12 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 def run_death_models():
     """
     args = argparse.Namespace(
-        model_location_id=123,
-        data_file='/ihme/covid-19/deaths/prod/2020_04_22_Europe/model_data_google_21/123.csv',
-        cov_file='/ihme/covid-19/deaths/prod/2020_04_22_Europe/model_data_google_21/123_covariate.csv',
-        last_day_file='/ihme/covid-19/deaths/prod/2020_04_22_Europe/last_day.csv',
+        model_location_id=523,
+        data_file='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/model_data_google_21/523.csv',
+        cov_file='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/model_data_google_21/523_covariate.csv',
+        last_day_file='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/last_day.csv',
         peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv',
-        output_dir='/ihme/covid-19/deaths/prod/2020_04_22_Europe/model_data_google_21/123',
+        output_dir='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/model_data_google_21/523',
         covariate_effect='gamma',
         n_draws=333
     )
@@ -631,6 +632,21 @@ def run_death_models():
             fix_day=fix_day
         )
         model = 'AP'
+        
+        # # get point estimate
+        # d = pd.to_datetime(cov_df.loc[cov_df['location_id'] == args.model_location_id, 'threshold_date'].item())
+        # t = np.arange(PRED_DAYS)
+        # if f'_{args.model_location_id}' in list(draws.keys()):
+        #     loose_curve = loose_model.predict(t, group_name=location)
+        # else:
+
+        # asdr = np.exp(tight_model.predict(t, ln_gaussian_cdf, f'_{args.model_location_id}'))
+        # asddr = asdr[1:] - asdr[:-1]
+        # point_df = pd.DataFrame({
+        #     'location_id':args.model_location_id,
+        #     'Date':[d + timedelta(days=int(t_i)) for t_i in t[1:]],
+        #     'Age-standardized death rate':asddr
+        # })
     else: # AP model for data rich
         logger.info('Running data rich model.')
         tight_model, draws = ap_flat_asym_model(
@@ -644,7 +660,17 @@ def run_death_models():
         )
         loose_model = tight_model  # just to plug into plot
         model = 'AP flat asymmetrical'
-
+        
+        # get point estimate
+        d = pd.to_datetime(cov_df.loc[cov_df['location_id'] == args.model_location_id, 'threshold_date'].item())
+        t = np.arange(PRED_DAYS)
+        asdr = np.exp(tight_model.predict(t, ln_gaussian_cdf, f'_{args.model_location_id}'))
+        asddr = asdr[1:] - asdr[:-1]
+        point_df = pd.DataFrame({
+            'location_id':args.model_location_id,
+            'Date':[d + timedelta(days=int(t_i)) for t_i in t[1:]],
+            'Age-standardized death rate':asddr
+        })
 
     # only save this location and overall draws
     subset_draws = dict()
@@ -669,6 +695,7 @@ def run_death_models():
         logger.info('Writing Gaussian mixture metadata')
         with open(f'{args.output_dir}/gaussian_mixtures.pkl', 'wb') as fwrite:
             pickle.dump(tight_model.gaussian_mixtures, fwrite, -1)
+        point_df.to_csv(f'{args.output_dir}/gm_point_estimate.csv', index=False)
     # tight
     logger.info('Writing tight models')
     with open(f'{args.output_dir}/tight_models.pkl', 'wb') as fwrite:

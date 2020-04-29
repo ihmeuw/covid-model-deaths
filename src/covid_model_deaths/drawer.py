@@ -65,7 +65,8 @@ class Drawer:
 
         # expand out by peak duration of peak days
         if self.peak_duration > 1:
-            draws = self._expand_peak(draws)
+            # draws = self._expand_peak(draws)
+            raise ValueError('Attempting to expand peak, no longer supporting feature.')
 
         return model_used, days, draws, past_pred
 
