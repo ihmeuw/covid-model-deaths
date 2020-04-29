@@ -1,6 +1,9 @@
 covid-model-deaths
 ==================
 
+.. image:: https://travis-ci.com/ihmeuw/covid-model-deaths.svg?branch=master
+    :target: https://travis-ci.com/ihmeuw/covid-model-deaths
+
 The IHME COVID-19 statistical deaths model.
 
 .. note::
