@@ -8,16 +8,8 @@ def backcast_all_locations(df: pd.DataFrame, rate_threshold: float) -> pd.DataFr
     df = add_change_in_rate(df, COLUMNS.ln_age_death_rate, COLUMNS.delta_ln_asdr)
     df = add_change_in_rate(df, COLUMNS.obs_ln_age_death_rate, COLUMNS.observed_delta_ln_asdr)
     daily_change = get_backcast_daily_change_by_location(df, COLUMNS.delta_ln_asdr)
-
-    bc_df = pd.concat([
-        backcast_log_age_standardized_death_ratio(
-            df.loc[df[COLUMNS.location_id] == bc_location_id],
-            bc_location_id,
-            daily_change.at[bc_location_id],
-            rate_threshold,
-        ) for bc_location_id in daily_change.index
-    ])
-    df = df.append(bc_df)
+    backcast_data = backcast(df, daily_change, COLUMNS.ln_age_death_rate, rate_threshold)
+    df = df.append(backcast_data)
     df = df.sort_values([COLUMNS.location_id, COLUMNS.days]).reset_index(drop=True)
     # TODO: Document this assumption about back-filling.
     fill_cols = [COLUMNS.location, COLUMNS.country, COLUMNS.population]
@@ -77,12 +69,38 @@ def get_backcast_daily_change_by_location(data: pd.DataFrame, measure: str,
     return daily_change
 
 
-def backcast_log_age_standardized_death_ratio(df: pd.DataFrame, location_id: int,
-                                              bc_step: int, rate_threshold: float) -> pd.DataFrame:
-    """Backcast the log age standardized death rate back to the rate threshold."""
-    out_columns = [COLUMNS.location_id, COLUMNS.days, COLUMNS.ln_age_death_rate]
-    # get first point
-    start_rep = df.sort_values(COLUMNS.days).reset_index(drop=True)[COLUMNS.ln_age_death_rate][0]
+def backcast(data: pd.DataFrame, daily_change: pd.Series, measure: str, rate_threshold: float) -> pd.DataFrame:
+    required_columns = [COLUMNS.location_id, measure]
+    day_0_rate = (data
+                  .set_index(COLUMNS.location_id)
+                  .loc[daily_change.index, measure]
+                  .groupby(level=COLUMNS.location_id)
+                  .min()
+                  .rename(0))
+    full_backcast = pd.concat([day_0_rate]
+                              + [(day_0_rate + x*daily_change).rename(x) for x in range(-1, -11, -1)], axis=1)
+    first_day_past_threshold = -full_backcast[full_backcast <= rate_threshold].isnull().sum(axis=1)
+    last_day_before_threshold = -(full_backcast[full_backcast > rate_threshold].notnull().sum(axis=1) - 1)
+    crossed_threshold = (first_day_past_threshold > -len(full_backcast.columns)) & (last_day_before_threshold > 0)
+    import pdb; pdb.set_trace()
+    first_day_past_threshold = first_day_past_threshold.loc[crossed_threshold]
+    last_day_before_threshold = last_day_before_threshold.loc[crossed_threshold]
+
+    day_scale = (last_day_before_threshold - rate_threshold) / (last_day_before_threshold - first_day_past_threshold)
+
+
+    out_columns = [COLUMNS.location_id, COLUMNS.days, measure]
+
+
+
+
+
+
+    to_backcast = (data
+                   .groupby(COLUMNS.location_id)
+                   .apply(_backcast))
+
+
 
     if start_rep > rate_threshold:  # backcast
         # count from threshold on
