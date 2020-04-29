@@ -365,35 +365,50 @@ class LeadingIndicator:
         self.data_version = data_version
         self.full_df = self._clean_up_dataset(full_df)
         
-    def _tests_per_capita(self) -> pd.DataFrame:
-        # us_df = pd.read_csv(f'/ihme/covid-19/snapshot-data/{self.data_version}/covid_onedrive/Testing/us_states_tests.csv')
-        # us_df['Date'] = pd.to_datetime(us_df['date'], format='%d.%m.%Y')
-        # us_df = us_df.rename(index=str, columns={'totaltestresults':'Tests'})
-        # g_df = pd.read_csv(f'/ihme/covid-19/snapshot-data/{self.data_version}/covid_onedrive/Testing/global_admin0_tests.csv')
-        # g_df['Date'] = pd.to_datetime(g_df['date'], format='%d.%m.%Y')
-        # g_df = g_df.rename(index=str, columns={'total_tests':'Tests'})
-        # df = us_df[['location_id', 'Date', 'Tests']].append(g_df[['location_id', 'date', 'Tests']])
-        df = pd.read_csv('/home/j/temp/kcausey/covid19/test_prop/data_smooth_4_27_global.csv')
-        df['Date'] = pd.to_datetime(df['date'])
-        df = df.rename(index=str, columns={'daily_total':'Tests'})
+    def _tests_per_capita(self, pop_df: pd.DataFrame) -> pd.DataFrame:
+        # load testing data from snapshot
+        us_df = pd.read_csv(f'/ihme/covid-19/snapshot-data/{self.data_version}/covid_onedrive/Testing/us_states_tests.csv')
+        us_df['Date'] = pd.to_datetime(us_df['date'], format='%d.%m.%Y')
+        us_df = us_df.rename(index=str, columns={'totaltestresults':'Tests'})
+        g_df = pd.read_csv(f'/ihme/covid-19/snapshot-data/{self.data_version}/covid_onedrive/Testing/global_admin0_tests.csv')
+        g_df['Date'] = pd.to_datetime(g_df['date'], format='%d.%m.%Y')
+        g_df = g_df.rename(index=str, columns={'total_tests':'Tests'})
+        df = us_df[['location_id', 'Date', 'Tests']].append(g_df[['location_id', 'date', 'Tests']])
+        #df = pd.read_csv('/home/j/temp/kcausey/covid19/test_prop/data_smooth_4_27_global.csv')
+        #df = df.rename(index=str, columns={'daily_total':'Tests'})
+        #df['Date'] = pd.to_datetime(df['date'])
+        
+        # format and get testing rate
         df = df.loc[(~df['location_id'].isnull()) & (~df['Tests'].isnull())]
         df = df.sort_values(['location_id', 'Date']).reset_index(drop=True)
-        df['Tests'] = df.groupby('location_id', as_index=False)['Tests'].cumsum()
-        df['Testing rate'] = df['Tests'] / df['pop']
-        df = df[['location_id', 'Date', 'Tests', 'Testing rate']]
-        df['location_id'] = df['location_id'].astype(int)
+        #df['Tests'] = df.groupby('location_id', as_index=False)['Tests'].cumsum()
+        df = df.merge(pop_df)
+        df['Testing rate'] = df['Tests'] / df['population']
         
-        return df
+        # smooth
+        df['ln(testing rate)'] = np.log(df['Testing rate'])
+        df.loc[df['Tests'] == 0, 'ln(testing rate)'] = np.log(0.1 / df['population'])
+        df['day0'] = df.groupby('location_id', as_index=False)['Date'].transform(min)
+        df['Days'] = df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
+        df = self._smooth_data(df, 'ln(testing rate)')
+        df['location_id'] = df['location_id'].astype(int)
+        df['Testing rate'] = np.exp(df['ln(testing rate)'])
+        
+        return df[['location_id', 'Date', 'Tests', 'Testing rate']]
     
     def _account_for_positivity(self, t1: float, t2: float, 
                                 c1: float, c2: float,
                                 logit_pos_int: float = -1.67,
                                 logit_pos_logit_test: float = -0.643) -> float:
         '''
-        t1 = 0.0009422044413620219
-        t2 = 0.0005275541285749835
-        c1 = 3.651402444897634e-05
-        c2 = 4.6986292647525517e-05
+        #t1 = 0.0009422044413620219
+        t1 = 500 / 1e6
+        #t2 = 0.0005275541285749835
+        t2 = 800 / 1e6
+        #c1 = 3.651402444897634e-05
+        c1 = 100 / 1e6
+        #c2 = 4.6986292647525517e-05
+        c2 = 180 / 1e6
         logit_pos_int = -8.05
         logit_pos_logit_test = -0.78
         '''
@@ -503,7 +518,7 @@ class LeadingIndicator:
         case_df = case_df.loc[case_df['Confirmed'] > 0].reset_index(drop=True)
         
         # adjust last 8 days of cases based on changes in testing over that time
-        test_df = self._tests_per_capita()
+        test_df = self._tests_per_capita(case_df[['location_id', 'population']].drop_duplicates())
         test_df['Date'] = test_df['Date'].apply(lambda x: x + timedelta(days=8))
         case_df = case_df.merge(test_df, how='left')
         case_df = pd.concat(
