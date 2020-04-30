@@ -74,5 +74,10 @@ if __name__ == "__main__":
             'dev': test_requirements + doc_requirements,
         },
 
+        entry_points="""
+                [console_scripts]
+                deaths_model=covid_model_deaths.cli.cli:deaths_model
+            """,
+
         zip_safe=False,
     )
