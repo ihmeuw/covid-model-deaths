@@ -517,17 +517,17 @@ class LeadingIndicator:
         full_case_df = case_df[['location_id', 'Date', 'Confirmed case rate']].copy()
         case_df = case_df.loc[case_df['Confirmed'] > 0].reset_index(drop=True)
         
-        # adjust last 8 days of cases based on changes in testing over that time
-        test_df = self._tests_per_capita(case_df[['location_id', 'population']].drop_duplicates())
-        test_df['Date'] = test_df['Date'].apply(lambda x: x + timedelta(days=8))
-        case_df = case_df.merge(test_df, how='left')
-        case_df = pd.concat(
-            [self._control_for_testing(case_df.loc[case_df['location_id'] == l]) for l in case_df.location_id.unique()]
-        )
-        case_df.to_csv('/ihme/homes/rmbarber/covid-19/testing_adjustment.csv', index=False)
-        del case_df['Tests']
-        del case_df['Testing rate']
-        raise ValueError('Assigning to adjusted column.')
+        # # adjust last 8 days of cases based on changes in testing over that time
+        # test_df = self._tests_per_capita(case_df[['location_id', 'population']].drop_duplicates())
+        # test_df['Date'] = test_df['Date'].apply(lambda x: x + timedelta(days=8))
+        # case_df = case_df.merge(test_df, how='left')
+        # case_df = pd.concat(
+        #     [self._control_for_testing(case_df.loc[case_df['location_id'] == l]) for l in case_df.location_id.unique()]
+        # )
+        # case_df.to_csv('/ihme/homes/rmbarber/covid-19/testing_adjustment.csv', index=False)
+        # del case_df['Tests']
+        # del case_df['Testing rate']
+        # raise ValueError('Assigning to adjusted column.')
 
         # do the same thing with hospitalizations (not present for all locs, so subset)
         hosp_df = self._smooth_data(self.full_df.loc[~self.full_df['Hospitalizations'].isnull()], 

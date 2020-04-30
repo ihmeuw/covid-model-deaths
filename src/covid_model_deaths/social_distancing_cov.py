@@ -122,7 +122,7 @@ class SocialDistCov:
                                                           'transit_stations_percent_change_from_baseline', 
                                                           'workplaces_percent_change_from_baseline']) -> List[int]:
         # get Google moblity data, subset covid data to places where we have mobility data
-        mob_df = pd.read_csv(self.mobility_sheet)
+        mob_df = pd.read_csv(self.mobility_sheet, encoding='latin1')
         mob_df = mob_df.loc[
             (~mob_df[mob_cols].isnull().any(axis=1)) &
             (~mob_df['location_id'].isnull())
