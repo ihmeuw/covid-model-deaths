@@ -503,8 +503,8 @@ class LeadingIndicator:
     
     def _average_over_last_days(self, df: pd.DataFrame, avg_var: str, mean_window: int = 3) -> pd.DataFrame:
         df['latest date'] = df.groupby('location_id', as_index=False)['Date'].transform(max)
-        df['last three days'] = df['latest date'].apply(lambda x: x - timedelta(days=mean_window-1))
-        df = df.loc[df['Date'] >= df['last three days']]
+        df['group days'] = df['group date'].apply(lambda x: x - timedelta(days=mean_window-1))
+        df = df.loc[df['Date'] >= df['last days']]
         df = df.groupby('location_id', as_index=False)[avg_var].mean()
         
         return df
@@ -515,19 +515,7 @@ class LeadingIndicator:
         case_df['Confirmed case rate'] = np.exp(case_df['ln(confirmed case rate)'])
         case_df['Date'] = case_df['Date'].apply(lambda x: x + timedelta(days=8))
         full_case_df = case_df[['location_id', 'Date', 'Confirmed case rate']].copy()
-        case_df = case_df.loc[case_df['Confirmed'] > 0].reset_index(drop=True)
-        
-        # # adjust last 8 days of cases based on changes in testing over that time
-        # test_df = self._tests_per_capita(case_df[['location_id', 'population']].drop_duplicates())
-        # test_df['Date'] = test_df['Date'].apply(lambda x: x + timedelta(days=8))
-        # case_df = case_df.merge(test_df, how='left')
-        # case_df = pd.concat(
-        #     [self._control_for_testing(case_df.loc[case_df['location_id'] == l]) for l in case_df.location_id.unique()]
-        # )
-        # case_df.to_csv('/ihme/homes/rmbarber/covid-19/testing_adjustment.csv', index=False)
-        # del case_df['Tests']
-        # del case_df['Testing rate']
-        # raise ValueError('Assigning to adjusted column.')
+        #case_df = case_df.loc[case_df['Confirmed'] > 0].reset_index(drop=True)
 
         # do the same thing with hospitalizations (not present for all locs, so subset)
         hosp_df = self._smooth_data(self.full_df.loc[~self.full_df['Hospitalizations'].isnull()], 
@@ -536,13 +524,13 @@ class LeadingIndicator:
         hosp_df['Hospitalization rate'] = np.exp(hosp_df['ln(hospitalization rate)'])
         hosp_df['Date'] = hosp_df['Date'].apply(lambda x: x + timedelta(days=8))
         full_hosp_df = hosp_df[['location_id', 'Date', 'Hospitalization rate']].copy()
-        hosp_df = hosp_df.loc[hosp_df['Hospitalizations'] > 0].reset_index(drop=True)
+        #hosp_df = hosp_df.loc[hosp_df['Hospitalizations'] > 0].reset_index(drop=True)
 
         # smooth deaths
         death_df = self._smooth_data(self.full_df, 'ln(death rate)')
         death_df['Death rate'] = np.exp(death_df['ln(death rate)'])
         full_death_df = death_df[['location_id', 'Date', 'Deaths', 'Death rate']].copy()
-        death_df = death_df.loc[death_df['Deaths'] > 0].reset_index(drop=True)
+        #death_df = death_df.loc[death_df['Deaths'] > 0].reset_index(drop=True)
         
         # calc ratios by day
         dcr_df = death_df[['location_id', 'Date', 'Death rate']].merge(
