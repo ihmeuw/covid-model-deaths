@@ -16,4 +16,5 @@ echo "Creating environment covid-deaths-$dt" &&
 umask 002
 conda create -y --name=covid-deaths-"$dt" python=3.6 &&
 conda activate covid-deaths-"$dt" &&
-pip install --extra-index-url https://artifactory.ihme.washington.edu/artifactory/api/pypi/pypi-shared/simple/ -e .
+pip install --extra-index-url https://artifactory.ihme.washington.edu/artifactory/api/pypi/pypi-shared/simple/ -r requirements.txt
+python setup.py develop

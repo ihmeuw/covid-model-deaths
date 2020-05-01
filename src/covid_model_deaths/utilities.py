@@ -11,13 +11,10 @@ import pandas as pd
 # TODO: Document better.  These are about the mix of social distancing
 #  covariates.
 MOBILITY_SOURCES = ['google', 'descartes', 'safegraph']
-# COV_SETTINGS = [('equal', [1, 1, 1]),
-#                 ('ascmid', [0.5, 1, 2]),
-#                 ('ascmax', [0, 0, 1])]  # ('descmid', [2, 1, 0.5]), ('descmax', [1, 0, 0]),
 # TODO: Don't know what this is at all.
 KS = [21]  # 14,
 # TODO: use drmaa and a job template.
-QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=12G -l fthread=3 '\
+QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=15G -l fthread=3 '\
            '-o /share/temp/sgeoutput/covid/output/ '\
            '-e /share/temp/sgeoutput/covid/errors/ '\
            '{python} {model_file} '\

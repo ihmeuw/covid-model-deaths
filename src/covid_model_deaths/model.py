@@ -187,7 +187,7 @@ def ap_model(df, model_location, location_cov, n_draws,
             'fe_bounds': [fe_bounds[0], [1, 1], fe_bounds[2]]
         })
     tight_model.run(last_info=last_info,
-                    initial_scalars=initial_scalars, 
+                    initial_scalars=initial_scalars,
                     **draw_dict)
     loose_model = APModel(
         all_data=df,
@@ -202,7 +202,7 @@ def ap_model(df, model_location, location_cov, n_draws,
             'fe_bounds': [fe_bounds[0], [1, 1], fe_bounds[2]]
         })
     loose_model.run(last_info=last_info,
-                    initial_scalars=initial_scalars, 
+                    initial_scalars=initial_scalars,
                     **draw_dict)
 
     # get truncated draws
@@ -376,8 +376,8 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     df['Age-standardized death rate'] = np.exp(df['ln(age-standardized death rate)'])
     df = process_input(df, 'location_id', 'days', 'Age-standardized death rate',
                        col_covs=[COVARIATE, 'intercept', 'obs_se'])
-    
-    # set bounds on Gaussian mixture weights 
+
+    # set bounds on Gaussian mixture weights
     gm_bounds = np.repeat(np.array([[0, 1.]]), N_B, axis=0)
     gm_bounds[-1] = [0.18, 4.]
     gm_bounds = np.vstack([gm_bounds, [[0, np.inf]]])  # add bounds on sum of weights
@@ -561,6 +561,7 @@ def run_death_models():
     )
     args = parser.parse_args()
 
+    logger.info(args)
     # read data
     df = pd.read_csv(args.data_file)
     cov_df = pd.read_csv(args.cov_file)
@@ -627,7 +628,7 @@ def run_death_models():
             fix_day=fix_day
         )
         model = 'AP'
-        
+
         # # get point estimate
         # d = pd.to_datetime(cov_df.loc[cov_df['location_id'] == args.model_location_id, 'threshold_date'].item())
         # t = np.arange(PRED_DAYS)
@@ -655,7 +656,7 @@ def run_death_models():
         )
         loose_model = tight_model  # just to plug into plot
         model = 'AP flat asymmetrical'
-        
+
         # get point estimate
         d = pd.to_datetime(cov_df.loc[cov_df['location_id'] == args.model_location_id, 'threshold_date'].item())
         t = np.arange(PRED_DAYS)

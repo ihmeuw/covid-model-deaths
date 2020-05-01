@@ -29,7 +29,5 @@ git commit -m "$1 run $dt_tag" &&
 echo "Pushing changes to repository" &&
 git push --set-upstream origin "$branch" &&
 echo "Tagging run" &&
-git tag -a "$dt_tag" -m "$1 run $dt_tag" &&
-git push --tags &&
 
 echo "**Done**"
