@@ -90,36 +90,17 @@ class LeadingIndicator:
 
     def _account_for_positivity(self, t1: float, t2: float,
                                 c1: float, c2: float,
-                                logit_pos_int: float = -1.67,
-                                logit_pos_logit_test: float = -0.643) -> float:
-        '''
-        #t1 = 0.0009422044413620219
-        t1 = 500 / 1e6
-        #t2 = 0.0005275541285749835
-        t2 = 800 / 1e6
-        #c1 = 3.651402444897634e-05
-        c1 = 100 / 1e6
-        #c2 = 4.6986292647525517e-05
-        c2 = 180 / 1e6
-        logit_pos_int = -8.05
-        logit_pos_logit_test = -0.78
-        '''
-        # if c2 <= c1 or t2 <= t1:
-        #     # should we do something about reduced testing?
-        #     cases = c2
-        # else:
+                                logit_pos_int: float = -8.05,
+                                logit_pos_logit_test: float = -0.78) -> float:
         logit = lambda x: np.log(x / (1 - x))
         expit = lambda x: 1 / (1 + np.exp(-x))
 
         p1 = expit(logit_pos_int + logit_pos_logit_test * logit(t1))
         p2 = expit(logit_pos_int + logit_pos_logit_test * logit(t2))
         increase_from_testing = (t2 * p2 - t1 * p1) / (t1 * p1)
-        # increase_from_testing = ((t2-t1) / t1) * (1 - positivity_effect)
 
         excess_reporting = ((c2 - c1) / c1) - increase_from_testing
 
-        # if excess_reporting < 0:
-        #    excess_reporting = 0
         cases = c1 * (1 + excess_reporting)
 
         if cases < 0:
@@ -184,12 +165,13 @@ class LeadingIndicator:
 
         return df
 
-    def _smooth_data(self, df: pd.DataFrame, smooth_var: str, reset_days: bool = False) -> pd.DataFrame:
+    def _smooth_data(self, df: pd.DataFrame, smooth_var: str, reset_days: bool = False, n_smooths: int = 3) -> pd.DataFrame:
         df = df.copy()
-        loc_dfs = [df.loc[df['location_id'] == l].reset_index(drop=True) for l in df.location_id.unique()]
-        loc_dfs = [moving_average(loc_df, smooth_var, reset_days=reset_days) for loc_df in loc_dfs]
-        if loc_dfs:
-            df = pd.concat(loc_dfs)
+        for i in range(n_smooths):
+            loc_dfs = [df.loc[df['location_id'] == l].reset_index(drop=True) for l in df.location_id.unique()]
+            loc_dfs = [moving_average(loc_df, smooth_var, reset_days=reset_days) for loc_df in loc_dfs]
+            if loc_dfs:
+                df = pd.concat(loc_dfs).reset_index(drop=True)
 
         return df
 
