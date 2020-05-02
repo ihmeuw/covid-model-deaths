@@ -22,7 +22,7 @@ RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
 PSEUDO_SE = 5
-N_B = 13
+N_B = 29
 PRED_DAYS = 150
 
 
@@ -378,9 +378,8 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
                        col_covs=[COVARIATE, 'intercept', 'obs_se'])
 
     # set bounds on Gaussian mixture weights
-    gm_bounds = np.repeat(np.array([[0, 1.]]), N_B, axis=0)
-    gm_bounds[-1] = [0.18, 4.]
-    gm_bounds = np.vstack([gm_bounds, [[0, np.inf]]])  # add bounds on sum of weights
+    gm_bounds = np.repeat(np.array([[0, 2.]]), N_B, axis=0)
+    gm_bounds = np.vstack([gm_bounds, [[0, 6.]]])  # add bounds on sum of weights
     gm_fit_dict = {
         'bounds': gm_bounds
     }
