@@ -227,7 +227,7 @@ def ap_model(df, model_location, location_cov, n_draws,
                     np.log(np.exp(last_obs) + np.exp(draws).cumsum(axis=1)))
         })
 
-    # get overall draws
+    # get overall draws (using obs with > 1 data point)
     filtered_tight_models = tight_model.run_filtered_models(
         df=tight_model.all_data, obs_bounds=obs_bounds
     )
@@ -522,40 +522,51 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 
 
 def run_death_models():
-    args = argparse.Namespace(cov_file='/ihme/covid-19/deaths/prod/2020_04_30_Europe/model_data_descartes_21/60373_covariate.csv', covariate_effect='gamma', data_file='/ihme/covid-19/deaths/prod/2020_04_30_Europe/model_data_descartes_21/60373.csv', last_day_file='/ihme/covid-19/deaths/prod/2020_04_30_Europe/last_day.csv', model_location_id=60373, n_draws=333, output_dir='/ihme/covid-19/deaths/prod/2020_04_30_Europe/model_data_descartes_21/60373', peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_14/final_peak_locs_04_14.csv')
-    
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument(
-#         '--model_location_id', help='id of location to which we are standardizing.', type=int
-#     )
-#     parser.add_argument(
-#         '--data_file', help='Name of location-standardized data file.', type=str
-#     )
-#     parser.add_argument(
-#         '--cov_file', help='Name of covariate file.', type=str
-#     )
-#     parser.add_argument(
-#         '--last_day_file', help='Name of last day of deaths file.', type=str
-#     )
-#     parser.add_argument(
-#         '--peaked_file', help='Name of peaked locations file.', type=str
-#     )
-#     parser.add_argument(
-#         '--output_dir', help='Where we are storing results.', type=str
-#     )
-#     parser.add_argument(
-#         '--covariate_effect', help='Whether covariate is acting on beta or gamma.', type=str
-#     )
-#     parser.add_argument(
-#         '--n_draws', help='How many samples to take.', type=int
-#     )
-#     args = parser.parse_args()
+    # args = argparse.Namespace(
+    #     cov_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373_covariate.csv', 
+    #     covariate_effect='gamma', 
+    #     data_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373.csv', 
+    #     last_day_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/last_day.csv', 
+    #     model_location_id=60373, 
+    #     n_draws=333, 
+    #     output_dir='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373', 
+    #     peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv'
+    # )
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--model_location_id', help='id of location to which we are standardizing.', type=int
+    )
+    parser.add_argument(
+        '--data_file', help='Name of location-standardized data file.', type=str
+    )
+    parser.add_argument(
+        '--cov_file', help='Name of covariate file.', type=str
+    )
+    parser.add_argument(
+        '--last_day_file', help='Name of last day of deaths file.', type=str
+    )
+    parser.add_argument(
+        '--peaked_file', help='Name of peaked locations file.', type=str
+    )
+    parser.add_argument(
+        '--output_dir', help='Where we are storing results.', type=str
+    )
+    parser.add_argument(
+        '--covariate_effect', help='Whether covariate is acting on beta or gamma.', type=str
+    )
+    parser.add_argument(
+        '--n_draws', help='How many samples to take.', type=int
+    )
+    args = parser.parse_args()
 
     logger.info(args)
     # read data
     df = pd.read_csv(args.data_file)
     cov_df = pd.read_csv(args.cov_file)
-    import pdb; pdb.set_trace()
+    
+    # only keep if more than one data point is present
+    keep_idx = df.groupby('location_id')['location_id'].transform('count') > 1
+    df = df[keep_idx].reset_index(drop=True)
 
     # try setting floor for covariate
     cov_df.loc[cov_df[COVARIATE] < 0.5, COVARIATE] = 0.5
@@ -613,7 +624,7 @@ def run_death_models():
             location_cov=location_cov,
             n_draws=args.n_draws,
             peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan', 'location_id'].unique().tolist(),
+            exclude_groups=peaked_df.loc[peaked_df['Location'].str.startswith('Wuhan'), 'location_id'].unique().tolist(),
             fix_gamma=fix_gamma,
             fix_point=fix_point,
             fix_day=fix_day
@@ -641,7 +652,7 @@ def run_death_models():
             model_location=f'_{args.model_location_id}',
             n_draws=args.n_draws,
             peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan', 'location_id'].unique().tolist(),
+            exclude_groups=peaked_df.loc[peaked_df['Location'].str.startswith('Wuhan'), 'location_id'].unique().tolist(),
             fix_point=fix_point,
             fix_day=fix_day
         )
