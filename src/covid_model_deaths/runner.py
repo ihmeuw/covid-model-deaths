@@ -186,8 +186,11 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
                 if ((mod_df[COLUMNS.location].isnull()) & (mod_df[COLUMNS.pseudo] == 0)).any():
                     raise ValueError('Missing location information in non-pseudo data')
                 mod_df = mod_df.sort_values([COLUMNS.location_id, COLUMNS.days]).reset_index(drop=True)
-                mod_df[COLUMNS.location] = mod_df[COLUMNS.location].fillna(method='pad')
-                mod_df[COLUMNS.country] = mod_df[COLUMNS.country].fillna(method='pad')
+                loc_df = loc_df.set_index(COLUMNS.location_id)
+                no_loc = mod_df[COLUMNS.location].isna()
+                mod_df.loc[no_loc, COLUMNS.location] = mod_df.loc[no_loc, COLUMNS.location_id].map(loc_df[COLUMNS.location])
+                mod_df.loc[no_loc, COLUMNS.country] = mod_df.loc[no_loc, COLUMNS.location_id].map(loc_df[COLUMNS.country])
+                loc_df = loc_df.reset_index()
 
         # figure out which models we are running (will need to check about R0=1 model)
         submodels = cmd_globals.MOBILITY_SOURCES.copy()

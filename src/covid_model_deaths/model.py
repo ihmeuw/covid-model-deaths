@@ -522,49 +522,40 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 
 
 def run_death_models():
-    """
-    args = argparse.Namespace(
-        model_location_id=523,
-        data_file='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/model_data_google_21/523.csv',
-        cov_file='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/model_data_google_21/523_covariate.csv',
-        last_day_file='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/last_day.csv',
-        peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv',
-        output_dir='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/model_data_google_21/523',
-        covariate_effect='gamma',
-        n_draws=333
-    )
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--model_location_id', help='id of location to which we are standardizing.', type=int
-    )
-    parser.add_argument(
-        '--data_file', help='Name of location-standardized data file.', type=str
-    )
-    parser.add_argument(
-        '--cov_file', help='Name of covariate file.', type=str
-    )
-    parser.add_argument(
-        '--last_day_file', help='Name of last day of deaths file.', type=str
-    )
-    parser.add_argument(
-        '--peaked_file', help='Name of peaked locations file.', type=str
-    )
-    parser.add_argument(
-        '--output_dir', help='Where we are storing results.', type=str
-    )
-    parser.add_argument(
-        '--covariate_effect', help='Whether covariate is acting on beta or gamma.', type=str
-    )
-    parser.add_argument(
-        '--n_draws', help='How many samples to take.', type=int
-    )
-    args = parser.parse_args()
+    args = argparse.Namespace(cov_file='/ihme/covid-19/deaths/prod/2020_04_30_Europe/model_data_descartes_21/60373_covariate.csv', covariate_effect='gamma', data_file='/ihme/covid-19/deaths/prod/2020_04_30_Europe/model_data_descartes_21/60373.csv', last_day_file='/ihme/covid-19/deaths/prod/2020_04_30_Europe/last_day.csv', model_location_id=60373, n_draws=333, output_dir='/ihme/covid-19/deaths/prod/2020_04_30_Europe/model_data_descartes_21/60373', peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_14/final_peak_locs_04_14.csv')
+    
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument(
+#         '--model_location_id', help='id of location to which we are standardizing.', type=int
+#     )
+#     parser.add_argument(
+#         '--data_file', help='Name of location-standardized data file.', type=str
+#     )
+#     parser.add_argument(
+#         '--cov_file', help='Name of covariate file.', type=str
+#     )
+#     parser.add_argument(
+#         '--last_day_file', help='Name of last day of deaths file.', type=str
+#     )
+#     parser.add_argument(
+#         '--peaked_file', help='Name of peaked locations file.', type=str
+#     )
+#     parser.add_argument(
+#         '--output_dir', help='Where we are storing results.', type=str
+#     )
+#     parser.add_argument(
+#         '--covariate_effect', help='Whether covariate is acting on beta or gamma.', type=str
+#     )
+#     parser.add_argument(
+#         '--n_draws', help='How many samples to take.', type=int
+#     )
+#     args = parser.parse_args()
 
     logger.info(args)
     # read data
     df = pd.read_csv(args.data_file)
     cov_df = pd.read_csv(args.cov_file)
+    import pdb; pdb.set_trace()
 
     # try setting floor for covariate
     cov_df.loc[cov_df[COVARIATE] < 0.5, COVARIATE] = 0.5
