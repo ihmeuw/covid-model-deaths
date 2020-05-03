@@ -81,7 +81,7 @@ class LeadingIndicator:
             f'/ihme/covid-19/snapshot-data/{self.data_version}/covid_onedrive/Testing/global_admin0_tests.csv')
         g_df['Date'] = pd.to_datetime(g_df['date'], format='%d.%m.%Y')
         g_df = g_df.rename(index=str, columns={'total_tests': 'Tests'})
-        df = us_df[['location_id', 'Date', 'Tests']].append(g_df[['location_id', 'date', 'Tests']])
+        df = us_df[['location_id', 'Date', 'Tests']].append(g_df[['location_id', 'Date', 'Tests']])
         # df = pd.read_csv('/home/j/temp/kcausey/covid19/test_prop/data_smooth_4_27_global.csv')
         # df = df.rename(index=str, columns={'daily_total':'Tests'})
         # df['Date'] = pd.to_datetime(df['date'])
@@ -92,7 +92,7 @@ class LeadingIndicator:
         # df['Tests'] = df.groupby('location_id', as_index=False)['Tests'].cumsum()
         df = df.merge(pop_df)
         df['Testing rate'] = df['Tests'] / df['population']
-
+        
         # smooth
         df['ln(testing rate)'] = np.log(df['Testing rate'])
         df.loc[df['Tests'] == 0, 'ln(testing rate)'] = np.log(0.1 / df['population'])
