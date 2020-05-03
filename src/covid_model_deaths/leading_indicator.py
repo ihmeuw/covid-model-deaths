@@ -165,7 +165,7 @@ class LeadingIndicator:
 
         return df
 
-    def _smooth_data(self, df: pd.DataFrame, smooth_var: str, reset_days: bool = False, n_smooths: int = 3) -> pd.DataFrame:
+    def _smooth_data(self, df: pd.DataFrame, smooth_var: str, reset_days: bool = False, n_smooths: int = 10) -> pd.DataFrame:
         df = df.copy()
         for i in range(n_smooths):
             loc_dfs = [df.loc[df['location_id'] == l].reset_index(drop=True) for l in df.location_id.unique()]

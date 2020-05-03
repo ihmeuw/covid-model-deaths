@@ -127,7 +127,7 @@ def drop_lagged_deaths_by_location(data: pd.DataFrame) -> pd.DataFrame:
     return data.loc[~lagged_deaths]
 
 
-def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float, n_smooths: int = 3) -> pd.DataFrame:
+def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float, n_smooths: int = 10) -> pd.DataFrame:
     """Smooths over the log age specific death rate.
 
     Parameters
@@ -147,16 +147,15 @@ def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float, n_smoo
     required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.days, COLUMNS.ln_age_death_rate]
     assert set(required_columns).issubset(data.columns)
     data[COLUMNS.obs_ln_age_death_rate] = data[COLUMNS.ln_age_death_rate]
-    # smooth three times
-    moving_average = data.copy()
+    # smooth n times
     for i in range(n_smooths):
-        moving_average = expanding_moving_average_by_location(moving_average, COLUMNS.ln_age_death_rate)
-    # noinspection PyTypeChecker
-    moving_average[moving_average < rate_threshold] = rate_threshold
-    data = data.set_index([COLUMNS.location_id, COLUMNS.date])
-    data = (pd.concat([data.drop(columns=COLUMNS.ln_age_death_rate), moving_average], axis=1)
-            .fillna(method='pad')
-            .reset_index())
+        moving_average = expanding_moving_average_by_location(data, COLUMNS.ln_age_death_rate)
+        # noinspection PyTypeChecker
+        moving_average[moving_average < rate_threshold] = rate_threshold
+        data = data.set_index([COLUMNS.location_id, COLUMNS.date])
+        data = (pd.concat([data.drop(columns=COLUMNS.ln_age_death_rate), moving_average], axis=1)
+                .fillna(method='pad')
+                .reset_index())
 
     return data
 
