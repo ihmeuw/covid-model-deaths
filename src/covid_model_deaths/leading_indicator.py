@@ -195,7 +195,7 @@ class LeadingIndicator:
 
     def _average_over_last_days(self, df: pd.DataFrame, avg_var: str, mean_window: int = 3) -> pd.DataFrame:
         df['latest date'] = df.groupby('location_id', as_index=False)['Date'].transform(max)
-        df['group days'] = df['group date'].apply(lambda x: x - pd.Timedelta(days=mean_window - 1))
+        df['last days'] = df['latest date'].apply(lambda x: x - pd.Timedelta(days=mean_window - 1))
         df = df.loc[df['Date'] >= df['last days']]
         df = df.groupby('location_id', as_index=False)[avg_var].mean()
 

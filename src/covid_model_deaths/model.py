@@ -227,7 +227,7 @@ def ap_model(df, model_location, location_cov, n_draws,
                     np.log(np.exp(last_obs) + np.exp(draws).cumsum(axis=1)))
         })
 
-    # get overall draws
+    # get overall draws (using obs with > 1 data point)
     filtered_tight_models = tight_model.run_filtered_models(
         df=tight_model.all_data, obs_bounds=obs_bounds
     )
@@ -522,18 +522,16 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 
 
 def run_death_models():
-    """
-    args = argparse.Namespace(
-        model_location_id=523,
-        data_file='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/model_data_google_21/523.csv',
-        cov_file='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/model_data_google_21/523_covariate.csv',
-        last_day_file='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/last_day.csv',
-        peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv',
-        output_dir='/ihme/covid-19/deaths/dev/2020_04_25_US_store_full/model_data_google_21/523',
-        covariate_effect='gamma',
-        n_draws=333
-    )
-    """
+    # args = argparse.Namespace(
+    #     cov_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373_covariate.csv', 
+    #     covariate_effect='gamma', 
+    #     data_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373.csv', 
+    #     last_day_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/last_day.csv', 
+    #     model_location_id=60373, 
+    #     n_draws=333, 
+    #     output_dir='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373', 
+    #     peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv'
+    # )
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--model_location_id', help='id of location to which we are standardizing.', type=int
@@ -565,6 +563,10 @@ def run_death_models():
     # read data
     df = pd.read_csv(args.data_file)
     cov_df = pd.read_csv(args.cov_file)
+    
+    # only keep if more than one data point is present
+    keep_idx = df.groupby('location_id')['location_id'].transform('count') > 1
+    df = df[keep_idx].reset_index(drop=True)
 
     # try setting floor for covariate
     cov_df.loc[cov_df[COVARIATE] < 0.5, COVARIATE] = 0.5
@@ -622,7 +624,7 @@ def run_death_models():
             location_cov=location_cov,
             n_draws=args.n_draws,
             peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan', 'location_id'].unique().tolist(),
+            exclude_groups=peaked_df.loc[peaked_df['Location'].str.startswith('Wuhan'), 'location_id'].unique().tolist(),
             fix_gamma=fix_gamma,
             fix_point=fix_point,
             fix_day=fix_day
@@ -650,7 +652,7 @@ def run_death_models():
             model_location=f'_{args.model_location_id}',
             n_draws=args.n_draws,
             peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan', 'location_id'].unique().tolist(),
+            exclude_groups=peaked_df.loc[peaked_df['Location'].str.startswith('Wuhan'), 'location_id'].unique().tolist(),
             fix_point=fix_point,
             fix_day=fix_day
         )
