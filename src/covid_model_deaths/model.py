@@ -568,7 +568,7 @@ def run_death_models():
     df = df[keep_idx].reset_index(drop=True)
 
     # try setting floor for covariate
-    cov_df.loc[cov_df[COVARIATE] < 0.5, COVARIATE] = 0.5
+    cov_df.loc[cov_df[COVARIATE] < 0.75, COVARIATE] = 0.75
 
     # attach covs to data file
     df = pd.merge(df, cov_df[['location_id', COVARIATE]], how='left')
