@@ -496,3 +496,39 @@ def smooth_data(output_root, file_name):
     out = pd.concat([smoothed_observed.drop(columns='deaths'), predicted]).sort_index().reset_index()
     out[draw_cols] = out.groupby('location_id')[draw_cols].cumsum()
     out.to_csv(root / ('smoothed_' + file_name.split('/')[-1]), index=False)
+
+
+def get_peak_from_model(location_id, submodel_dirs):
+    dfs = []
+    for submodel_dir in submodel_dirs:
+        df = pd.read_csv(f'{submodel_dir}/{location_id}/point_estimate.csv')
+        dfs.append(df)
+    df = pd.concat(dfs).reset_index(drop=True)
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = df.groupby('Date', as_index=False)['Age-standardized death rate'].mean()
+    peak_df = df.sort_values('Date').reset_index(drop=True)
+    peak_df = peak_df[15:]
+    peak_df = peak_df.sort_values('Age-standardized death rate', ascending=False).reset_index(drop=True)
+
+    peak_date = peak_df['Date'][0]
+    df['peak_date'] = False
+    df.loc[df['Date'] == peak_date, 'peak_date'] = True
+    df['location_id'] = location_id
+
+    return df
+
+
+def save_points_and_peaks(loc_df: pd.DataFrame, submodel_dict: dict, 
+                          draw_df: pd.DataFrame, age_pop_df: pd.DataFrame, output_dir: str):
+    root = Path(output_dir)
+    pop_df = age_pop_df.groupby('location_id', as_index=False)['population'].sum()
+    pred_dfs = [get_peak_from_model(location_id, submodel_dict[location_id]['submodel_dirs']) for location_id in loc_df['location_id'].to_list()]
+    pred_df = pd.concat(pred_dfs)
+    pred_df = pred_df.rename(index=str, columns={'Age-standardized death rate':'Daily death rate'})
+    peak_dates_df = pred_df.loc[pred_df['peak_date']]
+
+    pred_df = pred_df[['location_id', 'Date', 'Daily death rate']].reset_index(drop=True)
+    pred_df.to_csv(root / 'point_estimates.csv', index=False)
+    peak_dates_df = peak_dates_df[['location_id', 'Date', 'Daily death rate']].reset_index(drop=True)
+    peak_dates_df = peak_dates_df.rename(index=str, columns={'Date':'peak_date'})
+    peak_dates_df.to_csv(root / 'peak_dates.csv', index=False)
