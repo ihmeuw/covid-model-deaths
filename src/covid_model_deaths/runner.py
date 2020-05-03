@@ -16,11 +16,13 @@ from covid_model_deaths.compare_model_average import CompareAveragingModelDeaths
 from covid_model_deaths.data import compute_backcast_log_age_specific_death_rates
 from covid_model_deaths.drawer import Drawer
 from covid_model_deaths.impute_death_threshold import impute_death_threshold as impute_death_threshold_
+from covid_model_deaths.leading_indicator import LeadingIndicator
 import covid_model_deaths.globals as cmd_globals
 from covid_model_deaths.globals import COLUMNS, LOCATIONS
 from covid_model_deaths.model_average import moving_average_predictions
 from covid_model_deaths.social_distancing_cov import SocialDistCov
 from covid_model_deaths.utilities import submit_curvefit, CompareModelDeaths
+
 
 
 def make_cases_and_backcast_deaths(full_df: pd.DataFrame, death_df: pd.DataFrame,
@@ -121,8 +123,14 @@ def make_last_day_df(full_df: pd.DataFrame, date_mean_df: pd.DataFrame) -> pd.Da
     return last_day_df[[COLUMNS.location_id, COLUMNS.ln_death_rate, COLUMNS.days]]
 
 
+def make_leading_indicator(full_df: pd.DataFrame) -> pd.DataFrame:
+    leading = LeadingIndicator(full_df)
+    dcr_df, dhr_df, li_df = leading.produce_deaths()
+    return dcr_df, dhr_df, li_df
+
+
 def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
-                  age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, case_deaths_df: pd.DataFrame,
+                  age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, li_df: pd.DataFrame,
                   loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str,
                   data_version: str, r0_file: str, code_dir: str, verbose: bool = False) -> Dict:
     submodel_dict = {}
@@ -156,8 +164,8 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
         if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538]:
             # get future days
             last_date = full_df.loc[full_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
-            loc_cd_df = case_deaths_df.loc[(case_deaths_df[COLUMNS.location_id] == location_id)
-                                           & (case_deaths_df[COLUMNS.date] > last_date)].reset_index(drop=True)
+            loc_cd_df = li_df.loc[(li_df[COLUMNS.location_id] == location_id)
+                                  & (li_df[COLUMNS.date] > last_date)].reset_index(drop=True)
             loc_cd_df[COLUMNS.population] = full_df.loc[full_df[COLUMNS.location_id] == location_id,
                                                         COLUMNS.population].max()  # all the same...
             loc_cd_df[COLUMNS.pseudo] = 1
@@ -175,7 +183,14 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
 
                 # stick on to dataset
                 mod_df = mod_df.append(loc_cd_df)
+                if ((mod_df[COLUMNS.location].isnull()) & (mod_df[COLUMNS.pseudo] == 0)).any():
+                    raise ValueError('Missing location information in non-pseudo data')
                 mod_df = mod_df.sort_values([COLUMNS.location_id, COLUMNS.days]).reset_index(drop=True)
+                loc_df = loc_df.set_index(COLUMNS.location_id)
+                no_loc = mod_df[COLUMNS.location].isna()
+                mod_df.loc[no_loc, COLUMNS.location] = mod_df.loc[no_loc, COLUMNS.location_id].map(loc_df[COLUMNS.location])
+                mod_df.loc[no_loc, COLUMNS.country] = mod_df.loc[no_loc, COLUMNS.location_id].map(loc_df[COLUMNS.country])
+                loc_df = loc_df.reset_index()
 
         # figure out which models we are running (will need to check about R0=1 model)
         submodels = cmd_globals.MOBILITY_SOURCES.copy()
@@ -432,3 +447,52 @@ def display_total_deaths(draw_df: pd.DataFrame):
     deaths_lower = int(np.percentile(nat_df[draw_cols], 2.5, axis=1).item())
     deaths_upper = int(np.percentile(nat_df[draw_cols], 97.5, axis=1).item())
     print(f'{deaths_mean:,} ({deaths_lower:,} - {deaths_upper:,})')
+
+
+# FIXME: This is a hacked together thing that needs some love before it goes in a real
+#  production run.
+def smooth_data(output_root, file_name):
+    root = Path(output_root)
+    data_dir = root / 'model_data_google_21'
+
+    draw_cols = [f'draw_{d}' for d in range(1000)]
+
+    model_data = pd.read_csv(root / file_name)
+    model_data['date'] = pd.to_datetime(model_data['date'])
+    model_data = model_data.sort_values(['location_id', 'date']).reset_index(drop=True)
+    first_day = model_data['date'] == model_data.groupby('location_id').date.transform(min)
+    delta_draws = model_data[draw_cols].values[1:] - model_data[draw_cols].values[:-1]
+    delta_draws = delta_draws[~first_day.values[1:]]
+    model_data.loc[~first_day, draw_cols] = delta_draws
+    last_observed = model_data[model_data.observed].groupby('location_id').date.max()
+    predicted = model_data[~model_data.observed]
+    predicted = predicted.set_index(['location_id', 'location', 'date', 'observed'])
+    dfs = []
+    for p in data_dir.iterdir():
+        if p.suffix == '.csv' and 'covariate' not in p.name:
+            df = pd.read_csv(p)
+            df = df[df.location_id == int(p.stem)]
+            dfs.append(df)
+    smoothed_data = pd.concat(dfs)
+    smoothed_data = (smoothed_data[['location_id', 'Location', 'Date', 'ln(age-standardized death rate)', 'population']]
+                     .rename(columns={'Location': 'location', 'Date': 'date'}))
+    smoothed_data['deaths'] = np.exp(smoothed_data['ln(age-standardized death rate)']) * smoothed_data['population']
+    smoothed_data['date'] = pd.to_datetime(smoothed_data['date'])
+    smoothed_data = smoothed_data.sort_values(['location_id', 'date']).reset_index(drop=True)
+    first_day_smoothed = smoothed_data['date'] == smoothed_data.groupby('location_id').date.transform(min)
+    delta_smoothed = smoothed_data['deaths'].values[1:] - smoothed_data['deaths'].values[:-1]
+    delta_smoothed = delta_smoothed[~first_day_smoothed.values[1:]]
+    smoothed_data.loc[~first_day_smoothed, 'deaths'] = delta_smoothed
+    smoothed_data = smoothed_data.set_index('location_id').sort_index()
+    last_observed = last_observed.loc[smoothed_data.index].sort_index()
+    smoothed_observed = smoothed_data[smoothed_data['date'] <= last_observed].reset_index()
+    smoothed_observed['observed'] = False
+    smoothed_observed = (smoothed_observed[['location_id', 'location', 'date', 'observed', 'deaths']]
+                         .set_index(['location_id', 'location', 'date', 'observed']))
+
+    for i in range(1000):
+        smoothed_observed[f'draw_{i}'] = smoothed_observed['deaths']
+
+    out = pd.concat([smoothed_observed.drop(columns='deaths'), predicted]).sort_index().reset_index()
+    out[draw_cols] = out.groupby('location_id')[draw_cols].cumsum()
+    out.to_csv(root / ('smoothed_' + file_name.split('/')[-1]), index=False)

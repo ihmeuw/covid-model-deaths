@@ -39,6 +39,11 @@ class SocialDistCov:
         # TODO: Move to etl
         self.closure_sheet = f'/ihme/covid-19/model-inputs/{data_version}/closure_criteria_sheet.xlsx'
         self.closure_df = self._process_closure_dataset()
+        
+        # get "voluntary closure" locations
+        self.mobility_sheet = f'/ihme/covid-19/snapshot-data/{data_version}/covid_onedrive'\
+                              '/Decrees for Closures/Google/google_mobility_with_locs.csv'
+        self.vol_locs = self._capture_voluntary_mobility()
 
         # use current date
         self.current_date = datetime.strptime(datetime.today().strftime('%Y-%m-%d'), '%Y-%m-%d')
@@ -100,6 +105,24 @@ class SocialDistCov:
             ).reset_index(drop=True)
 
         return df
+    
+    def _capture_voluntary_mobility(self, 
+                                    mob_cols: List[str] =['retail_and_recreation_percent_change_from_baseline', 
+                                                          'transit_stations_percent_change_from_baseline', 
+                                                          'workplaces_percent_change_from_baseline']) -> List[int]:
+        # get Google moblity data, subset covid data to places where we have mobility data
+        mob_df = pd.read_csv(self.mobility_sheet, encoding='latin1')
+        mob_df = mob_df.loc[
+            (~mob_df[mob_cols].isnull().any(axis=1)) &
+            (~mob_df['location_id'].isnull())
+        ]
+        mob_df['location_id'] = mob_df['location_id'].astype(int)
+        mob_df['mobility'] = mob_df[mob_cols].mean(axis=1)
+        
+        # identify locations with at least a 40% reduction in mobility
+        vol_locs = mob_df.loc[mob_df['mobility'] < -40, 'location_id'].unique().tolist()
+        
+        return vol_locs
 
     def _calc_peak_date(self, prob: str, R0_file: str):
         # get R0 == 1 file
@@ -171,10 +194,11 @@ class SocialDistCov:
         df.loc[df['ci_psd1'].isnull(), 'ci_psd1'] = df['ci_sd1']
         df.loc[df['ci_psd3'].isnull(), 'ci_psd3'] = df['ci_sd3']
 
-        # fill nulls with 3 weeks
+        # fill nulls with current 3 weeks
         for closure_code in code_map.keys():
             df.loc[df[closure_code].isnull(), closure_code] =  df.loc[df[closure_code].isnull()].apply(
-                lambda x: (self.current_date - x['threshold_date']).days + 21, axis=1
+                lambda x: (self.current_date - x['threshold_date']).days + 21, 
+                axis=1
             )
 
         # combine w/ weights

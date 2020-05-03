@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
+from datetime import timedelta
 
 
 warnings.filterwarnings('ignore')
@@ -21,6 +22,8 @@ RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
 PSEUDO_SE = 5
+N_B = 13
+PRED_DAYS = 150
 
 
 def get_hash(key: str) -> int:
@@ -40,7 +43,7 @@ def get_hash(key: str) -> int:
 
 def ap_model(df, model_location, location_cov, n_draws,
              peaked_groups, exclude_groups, fix_gamma, fix_point, fix_day,
-             pred_days=150):
+             pred_days=PRED_DAYS):
     # our dataset (rename days as model assumes it's lower case)
     df = df.copy()
     df = df.rename(index=str, columns={'Days':'days'})
@@ -69,6 +72,7 @@ def ap_model(df, model_location, location_cov, n_draws,
     dummy_uprior = [-np.inf, np.inf]
     zero_uprior = [0.0, 0.0]
     fe_init = np.array([-2.5, 28.0, -8.05])
+    initial_scalars = [[-0.5, 0.0, 0.5], [0.0], [0.0]]
     fe_bounds = [[-np.inf, 0.0], [15.0, 100.0], [-10, -6]]
     options = {
         'ftol': 1e-10,
@@ -116,8 +120,8 @@ def ap_model(df, model_location, location_cov, n_draws,
 
     # for prediction of places with no data
     alpha_times_beta = np.exp(0.7)
-    obs_bounds = [40, np.inf]  # filter the data rich models
-    predict_cov = np.array([1.0, location_cov, 1.0])  # new covariates for the places.
+    obs_bounds = [40, np.inf] # filter the data rich models
+    predict_cov = np.array([1.0, location_cov, 1.0]) # new covariates for the places.
 
     # tight prior control panel
     tight_info_dict = {
@@ -182,7 +186,9 @@ def ap_model(df, model_location, location_cov, n_draws,
         tight_model.fit_dict.update({
             'fe_bounds': [fe_bounds[0], [1, 1], fe_bounds[2]]
         })
-    tight_model.run(last_info=last_info, **draw_dict)
+    tight_model.run(last_info=last_info,
+                    initial_scalars=initial_scalars,
+                    **draw_dict)
     loose_model = APModel(
         all_data=df,
         **loose_info_dict,
@@ -195,7 +201,9 @@ def ap_model(df, model_location, location_cov, n_draws,
         loose_model.fit_dict.update({
             'fe_bounds': [fe_bounds[0], [1, 1], fe_bounds[2]]
         })
-    loose_model.run(last_info=last_info, **draw_dict)
+    loose_model.run(last_info=last_info,
+                    initial_scalars=initial_scalars,
+                    **draw_dict)
 
     # get truncated draws
     tight_draws = tight_model.process_draws(draw_dict['prediction_times'],
@@ -219,7 +227,7 @@ def ap_model(df, model_location, location_cov, n_draws,
                     np.log(np.exp(last_obs) + np.exp(draws).cumsum(axis=1)))
         })
 
-    # get overall draws
+    # get overall draws (using obs with > 1 data point)
     filtered_tight_models = tight_model.run_filtered_models(
         df=tight_model.all_data, obs_bounds=obs_bounds
     )
@@ -286,7 +294,7 @@ def ap_model(df, model_location, location_cov, n_draws,
 
 
 def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_groups,
-                       fix_point, fix_day, pred_days=150):
+                       fix_point, fix_day, pred_days=PRED_DAYS):
     # our dataset (rename days as model assumes it's lower case)
     df = df.copy()
     df = df.rename(index=str, columns={'Days':'days'})
@@ -315,6 +323,7 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     dummy_uprior = [-np.inf, np.inf]
     zero_uprior = [0.0, 0.0]
     fe_init = np.array([-2.5, 28.0, -8.05])
+    initial_scalars = [[-0.5, 0.0, 0.5], [0.0], [0.0]]
     fe_bounds = [[-np.inf, 0.0], [15.0, 100.0], [-15, -6]]
     options = {
         'ftol': 1e-10,
@@ -368,28 +377,8 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     df = process_input(df, 'location_id', 'days', 'Age-standardized death rate',
                        col_covs=[COVARIATE, 'intercept', 'obs_se'])
 
-    # # set number of basis functions based on data
-    # if len(df.loc[df['location'] == model_location]) < 20:
-    #     n_b = 7
-    # elif len(df.loc[df['location'] == model_location]) < 22:
-    #     n_b = 9
-    # elif len(df.loc[df['location'] == model_location]) < 24:
-    #     n_b = 11
-    # else:
-    #     n_b = 13
-    # print(f'basis functions: {n_b}')
-    n_b = 13
-    
     # set bounds on Gaussian mixture weights
-    gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
-    gm_bounds[-1] = [0.18, 4.]
-    gm_bounds = np.vstack([gm_bounds, [[0, np.inf]]])  # add bounds on sum of weights
-    gm_fit_dict = {
-        'bounds': gm_bounds
-    }
-
-    # set bounds on Gaussian mixture weights
-    gm_bounds = np.repeat(np.array([[0, 1.]]), n_b, axis=0)
+    gm_bounds = np.repeat(np.array([[0, 1.]]), N_B, axis=0)
     gm_bounds[-1] = [0.18, 4.]
     gm_bounds = np.vstack([gm_bounds, [[0, np.inf]]])  # add bounds on sum of weights
     gm_fit_dict = {
@@ -402,7 +391,7 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     # The Alpha Prior Model (flat asymmetric module)
     model = APFlatAsymmetricModel(
         beta_stride=2,
-        mixture_size=n_b,
+        mixture_size=N_B,
         daily_col='asddr',
         gm_fit_threshold=DATA_THRESHOLD,
         gm_fit_dict=gm_fit_dict,
@@ -420,7 +409,8 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
         exclude_below=0,
         last_info={
             model_location:[fix_day, fix_point]
-        }
+        },
+        initial_scalars=initial_scalars
     )
     daily_draws = model.process_draws(np.arange(pred_days),
                                       last_info={
@@ -448,7 +438,7 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     return model, cumulative_draws
 
 
-def plot_location(location, location_name, covariate_val, tm, lm, model_instance, draw, population, pdf=None, pred_days=150):
+def plot_location(location, location_name, covariate_val, tm, lm, model_instance, draw, population, pdf=None, pred_days=PRED_DAYS):
     # get past curve point estimates
     tight_curve_t = np.arange(pred_days)
     tight_curve = tm.predict(tight_curve_t, group_name=location)
@@ -532,17 +522,16 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 
 
 def run_death_models():
-#     args = argparse.Namespace(
-#         model_location_id=4657,
-#         data_file='/ihme/covid-19/deaths/prod/2020_04_25_Europe_final/model_data_google_21/4657.csv',
-#         cov_file='/ihme/covid-19/deaths/prod/2020_04_25_Europe_final/model_data_google_21/4657_covariate.csv',
-#         last_day_file='/ihme/covid-19/deaths/prod/2020_04_25_Europe_final/last_day.csv',
-#         peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_14/final_peak_locs_04_14.csv',
-#         output_dir='/ihme/covid-19/deaths/prod/2020_04_25_Europe_final/model_data_google_21/4657',
-#         covariate_effect='gamma',
-#         n_draws=333
-#     )
-
+    # args = argparse.Namespace(
+    #     cov_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373_covariate.csv', 
+    #     covariate_effect='gamma', 
+    #     data_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373.csv', 
+    #     last_day_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/last_day.csv', 
+    #     model_location_id=60373, 
+    #     n_draws=333, 
+    #     output_dir='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373', 
+    #     peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv'
+    # )
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--model_location_id', help='id of location to which we are standardizing.', type=int
@@ -574,9 +563,13 @@ def run_death_models():
     # read data
     df = pd.read_csv(args.data_file)
     cov_df = pd.read_csv(args.cov_file)
+    
+    # only keep if more than one data point is present
+    keep_idx = df.groupby('location_id')['location_id'].transform('count') > 1
+    df = df[keep_idx].reset_index(drop=True)
 
     # try setting floor for covariate
-    cov_df.loc[cov_df[COVARIATE] < 0.25, COVARIATE] = 0.25
+    cov_df.loc[cov_df[COVARIATE] < 0.5, COVARIATE] = 0.5
 
     # attach covs to data file
     df = pd.merge(df, cov_df[['location_id', COVARIATE]], how='left')
@@ -595,10 +588,6 @@ def run_death_models():
     # identify covariate value for our location
     location_cov = cov_df.loc[cov_df['location_id'] == args.model_location_id,
                               COVARIATE].item()
-
-    # don't let it be below 10 / 28
-    if location_cov < 0.36:
-        location_cov = 0.36
 
     # get list of peaked locations
     peaked_df = pd.read_csv(args.peaked_file)
@@ -635,12 +624,27 @@ def run_death_models():
             location_cov=location_cov,
             n_draws=args.n_draws,
             peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id'].unique().tolist(),
+            exclude_groups=peaked_df.loc[peaked_df['Location'].str.startswith('Wuhan'), 'location_id'].unique().tolist(),
             fix_gamma=fix_gamma,
             fix_point=fix_point,
             fix_day=fix_day
         )
         model = 'AP'
+
+        # # get point estimate
+        # d = pd.to_datetime(cov_df.loc[cov_df['location_id'] == args.model_location_id, 'threshold_date'].item())
+        # t = np.arange(PRED_DAYS)
+        # if f'_{args.model_location_id}' in list(draws.keys()):
+        #     loose_curve = loose_model.predict(t, group_name=location)
+        # else:
+
+        # asdr = np.exp(tight_model.predict(t, ln_gaussian_cdf, f'_{args.model_location_id}'))
+        # asddr = asdr[1:] - asdr[:-1]
+        # point_df = pd.DataFrame({
+        #     'location_id':args.model_location_id,
+        #     'Date':[d + timedelta(days=int(t_i)) for t_i in t[1:]],
+        #     'Age-standardized death rate':asddr
+        # })
     else: # AP model for data rich
         logger.info('Running data rich model.')
         tight_model, draws = ap_flat_asym_model(
@@ -648,13 +652,23 @@ def run_death_models():
             model_location=f'_{args.model_location_id}',
             n_draws=args.n_draws,
             peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
-            exclude_groups=peaked_df.loc[peaked_df['Location'] == 'Wuhan City, Hubei', 'location_id'].unique().tolist(),
+            exclude_groups=peaked_df.loc[peaked_df['Location'].str.startswith('Wuhan'), 'location_id'].unique().tolist(),
             fix_point=fix_point,
             fix_day=fix_day
         )
         loose_model = tight_model  # just to plug into plot
         model = 'AP flat asymmetrical'
 
+        # get point estimate
+        d = pd.to_datetime(cov_df.loc[cov_df['location_id'] == args.model_location_id, 'threshold_date'].item())
+        t = np.arange(PRED_DAYS)
+        asdr = np.exp(tight_model.predict(t, ln_gaussian_cdf, f'_{args.model_location_id}'))
+        asddr = asdr[1:] - asdr[:-1]
+        point_df = pd.DataFrame({
+            'location_id':args.model_location_id,
+            'Date':[d + timedelta(days=int(t_i)) for t_i in t[1:]],
+            'Age-standardized death rate':asddr
+        })
 
     # only save this location and overall draws
     subset_draws = dict()
@@ -674,6 +688,12 @@ def run_death_models():
             pickle.dump(loose_model.models, fwrite, -1)
         with open(f'{args.output_dir}/loose_model_fit_dict.pkl', 'wb') as fwrite:
             pickle.dump(loose_model.fit_dict, fwrite, -1)
+    else:
+        # GM data
+        logger.info('Writing Gaussian mixture metadata')
+        with open(f'{args.output_dir}/gaussian_mixtures.pkl', 'wb') as fwrite:
+            pickle.dump(tight_model.gaussian_mixtures, fwrite, -1)
+        point_df.to_csv(f'{args.output_dir}/gm_point_estimate.csv', index=False)
     # tight
     logger.info('Writing tight models')
     with open(f'{args.output_dir}/tight_models.pkl', 'wb') as fwrite:
