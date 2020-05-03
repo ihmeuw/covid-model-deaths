@@ -82,11 +82,9 @@ class LeadingIndicator:
         df.loc[df['Tests'] == 0, 'ln(testing rate)'] = np.log(0.1 / df['population'])
         df['day0'] = df.groupby('location_id', as_index=False)['Date'].transform(min)
         df['Days'] = df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
-        df = self._smooth_data(df, 'ln(testing rate)')
         df['location_id'] = df['location_id'].astype(int)
-        df['Testing rate'] = np.exp(df['ln(testing rate)'])
 
-        return df[['location_id', 'Date', 'Tests', 'Testing rate']]
+        return df[['location_id', 'Date', 'Days', 'Tests', 'Testing rate', 'ln(testing rate)']]
 
     def _account_for_positivity(self, t1: float, t2: float,
                                 c1: float, c2: float,
@@ -116,17 +114,18 @@ class LeadingIndicator:
         df['Daily case rate'] = np.nan
         df['Daily case rate'][1:] = df['Confirmed case rate'].values[1:] - df['Confirmed case rate'].values[:-1]
 
-        # keep last 8 days
-        future_df = df.loc[df['Date'] >= df['Date'].max() - pd.Timedelta(days=8)]
+        # keep last 10 days, get avg daily cases and testing from 8-10, then just keep 8
+        future_df = df.loc[df['Date'] >= df['Date'].max() - pd.Timedelta(days=10)]
+        start_cases = future_df.loc[future_df['Date'] <= future_df['Date'].max() - pd.Timedelta(days=8), 
+                                    'Daily case rate'].mean()
+        start_tests = future_df.loc[future_df['Date'] <= future_df['Date'].max() - pd.Timedelta(days=8), 
+                                    'Daily testing rate'].mean()
+        future_df = future_df.loc[future_df['Date'] >= future_df['Date'].max() - pd.Timedelta(days=8)]
 
         # use case data if it is less than 3 days behind
         if future_df['Testing rate'].isnull().sum() < 3:
             future_df = future_df.sort_values('Date').reset_index(drop=True)
             future_df = future_df.loc[~future_df['Testing rate'].isnull()]
-            start_cases = future_df['Daily case rate'][0]
-            start_tests = future_df['Daily testing rate'][0]
-            # testing = stats.linregress(future_df.index.values, np.log(future_df['Testing rate'].values))
-            # future_df['Testing estimate'] = np.exp(testing.intercept + testing.slope * future_df.index.values)
 
             future_df['Adjusted daily case rate'] = future_df.apply(
                 lambda x: self._account_for_positivity(start_tests, x['Daily testing rate'],
@@ -190,6 +189,20 @@ class LeadingIndicator:
         case_df['Date'] = case_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
         full_case_df = case_df[['location_id', 'Date', 'Confirmed case rate']].copy()
         # case_df = case_df.loc[case_df['Confirmed'] > 0].reset_index(drop=True)
+        
+        # adjust last 8 days of cases based on changes in testing over that time
+        test_df = self._tests_per_capita(case_df[['location_id', 'population']].drop_duplicates())
+        test_df = self._smooth_data(test_df, 'ln(testing rate)')
+        test_df['Testing rate'] = np.exp(test_df['ln(testing rate)'])
+        test_df['Date'] = test_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
+        case_df = case_df.merge(test_df, how='left')
+        case_df = pd.concat(
+            [self._control_for_testing(case_df.loc[case_df['location_id'] == l]) for l in case_df.location_id.unique()]
+        )
+        case_df.to_csv('/ihme/homes/rmbarber/covid-19/testing_adjustment.csv', index=False)
+        del case_df['Tests']
+        del case_df['ln(testing rate)']
+        raise ValueError('Assigning to adjusted column.')
 
         # do the same thing with hospitalizations (not present for all locs, so subset)
         hosp_df = self._smooth_data(self.full_df.loc[~self.full_df['Hospitalizations'].isnull()],
