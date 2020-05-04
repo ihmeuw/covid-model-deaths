@@ -160,8 +160,8 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
         mod_df[COLUMNS.pseudo] = 0
 
         # tack on deaths from cases if in dataset
-        # South Dakota, Iowa
-        if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538]:
+        # South Dakota, Iowa, France
+        if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538, 80]:
             # get future days
             last_date = full_df.loc[full_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
             loc_cd_df = li_df.loc[(li_df[COLUMNS.location_id] == location_id)
