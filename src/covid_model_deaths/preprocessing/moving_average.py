@@ -34,12 +34,16 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
                       .rolling(window=window, min_periods=1, center=True)
                       .mean())
     if len(moving_average) > window:
-        # replace last point w/ daily value over 3->2 and 2->1 and the first
-        # with 1->2, 2->3; use observed if 3 data points or less
-        last_step = np.mean(np.array(moving_average[-window:-1]) - np.array(moving_average[-window - 1:-2]))
+        # project second derivative forward at end
+        first_diff = np.array(moving_average[-window:-1]) - np.array(moving_average[-window - 1:-2])
+        second_diff = np.diff(first_diff).mean()
+        last_step = first_diff[-1] + second_diff
         moving_average.iloc[-1] = moving_average.iloc[-2] + last_step
 
-        first_step = np.mean(np.array(moving_average[2:window + 1]) - np.array(moving_average[1:window]))
+        # project second derivative backward at beginning
+        first_diff = np.array(moving_average[2:window + 1]) - np.array(moving_average[1:window])
+        second_diff = np.diff(first_diff).mean()
+        first_step = first_diff[0] - second_diff
         moving_average.iloc[0] = moving_average.iloc[1] - first_step
     return moving_average
 

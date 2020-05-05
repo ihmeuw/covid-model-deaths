@@ -1,52 +1,39 @@
 import numpy as np
 import pandas as pd
 
+from covid_model_deaths.globals import COLUMNS
 
-def moving_average(df: pd.DataFrame, rate_var: str, rate_threshold: int = None,
-                   reset_days: bool = False) -> pd.DataFrame:
-    if reset_days:
-        df['Days'] -= df['Days'].min()
-    if df.location_id.unique().size != 1:
-        raise ValueError('Multiple locations in dataset.')
-    if df['Days'].min() != 0:
-        raise ValueError('Not starting at 0')
-    df = df.merge(pd.DataFrame({'Days': np.arange(df['Days'].min(), df['Days'].max() + 1)}), how='outer')
-    df = df.sort_values('Days').reset_index(drop=True)
-    df.loc[df['Date'].isnull(), 'Date'] = (df.loc[df['Date'].isnull(), 'Days']
-                                           .apply(lambda x: df['Date'].min() + pd.Timedelta(days=x)))
-    # TODO: Document.
-    df = df.fillna(method='pad')
+def add_moving_average(data: pd.DataFrame, measure: str, rate_threshold: float, n_smooths: int = 10) -> pd.DataFrame:
+    """Smooths over the log age specific death rate.
 
-    # FIXME: Shadowing variable from outer scope.  Make a separate
-    #  function.
-    def moving_3day_avg(day, df):
-        # determine difference
-        days = np.array([day - 1, day, day + 1])
-        days = days[days >= 0]
-        days = days[days <= df['Days'].max()]
-        avg = df.loc[df['Days'].isin(days), rate_var].mean()
+    Parameters
+    ----------
+    data
+        The data with the age specific death rate to smooth over.
+    rate_threshold
+        The minimum age specific death rate.  Values produced in the
+        averaging will be pinned to this.
 
-        return avg
+    Returns
+    -------
+        The same data with the log asdr replaced with its average and a new
+        column with the original observed asdr.
 
-    # get diffs
-    avgs = [moving_3day_avg(i, df) for i in df['Days']]
-    df[f'Observed {rate_var}'] = df[rate_var]
-    df[rate_var] = avgs
+    """
+    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.days, measure]
+    assert set(required_columns).issubset(data.columns)
+    data[f'Observed {measure}'] = data[measure]
+    # smooth n times
+    for i in range(n_smooths):
+        moving_average = expanding_moving_average_by_location(data, measure)
+        # noinspection PyTypeChecker
+        moving_average[moving_average < rate_threshold] = rate_threshold
+        data = data.set_index([COLUMNS.location_id, COLUMNS.date])
+        data = (pd.concat([data.drop(columns=measure), moving_average], axis=1)
+                .fillna(method='pad')
+                .reset_index())
 
-    # replace last point w/ daily value over 3->2 and 2->1 and the first
-    # with 1->2, 2->3; use observed if 3 data points or less
-    if len(df) > 3:
-        last_step = np.mean(np.array(avgs[-3:-1]) - np.array(avgs[-4:-2]))
-        df[rate_var][len(df) - 1] = (df[rate_var][len(df) - 2]
-                                     + last_step)
-        first_step = np.mean(np.array(avgs[2:4]) - np.array(avgs[1:3]))
-        df[rate_var][0] = df[rate_var][1] - first_step
-        if rate_threshold is not None and df[rate_var][0] < rate_threshold:
-            df[rate_var][0] = rate_threshold
-    else:
-        df[rate_var] = df[f'Observed {rate_var}']
-
-    return df
+    return data
 
 
 class LeadingIndicator:
@@ -179,16 +166,6 @@ class LeadingIndicator:
 
         return df
 
-    def _smooth_data(self, df: pd.DataFrame, smooth_var: str, reset_days: bool = False, n_smooths: int = 10) -> pd.DataFrame:
-        df = df.copy()
-        for i in range(n_smooths):
-            loc_dfs = [df.loc[df['location_id'] == l].reset_index(drop=True) for l in df.location_id.unique()]
-            loc_dfs = [moving_average(loc_df, smooth_var, reset_days=reset_days) for loc_df in loc_dfs]
-            if loc_dfs:
-                df = pd.concat(loc_dfs).reset_index(drop=True)
-
-        return df
-
     def _average_over_last_days(self, df: pd.DataFrame, avg_var: str, mean_window: int = 3) -> pd.DataFrame:
         df = df.copy()
         df['latest date'] = df.groupby('location_id', as_index=False)['Date'].transform(max)
@@ -200,7 +177,7 @@ class LeadingIndicator:
 
     def _get_death_to_prior_indicator(self):
         # smooth cases, prepare to match with deaths 8 days later
-        case_df = self._smooth_data(self.full_df, 'ln(confirmed case rate)')
+        case_df = add_moving_average(self.full_df, 'ln(confirmed case rate)', -np.inf)
         case_df['Confirmed case rate'] = np.exp(case_df['ln(confirmed case rate)'])
         case_df['Date'] = case_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
         full_case_df = case_df[['location_id', 'Date', 'Confirmed case rate']].copy()
@@ -208,7 +185,7 @@ class LeadingIndicator:
         
         # adjust last 8 days of cases based on changes in testing over that time
         test_df = self._tests_per_capita(case_df[['location_id', 'population']].drop_duplicates())
-        test_df = self._smooth_data(test_df, 'ln(testing rate)')
+        test_df = add_moving_average(test_df, 'ln(testing rate)', -np.inf)
         test_df['Testing rate'] = np.exp(test_df['ln(testing rate)'])
         test_df['Date'] = test_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
         case_df = case_df.merge(test_df, how='left')
@@ -217,16 +194,15 @@ class LeadingIndicator:
         )
 
         # do the same thing with hospitalizations (not present for all locs, so subset)
-        hosp_df = self._smooth_data(self.full_df.loc[~self.full_df['Hospitalizations'].isnull()],
-                                    'ln(hospitalization rate)',
-                                    reset_days=True)
+        hosp_df = add_moving_average(self.full_df.loc[~self.full_df['Hospitalizations'].isnull()], 
+                                     'ln(hospitalization rate)', -np.inf)
         hosp_df['Hospitalization rate'] = np.exp(hosp_df['ln(hospitalization rate)'])
         hosp_df['Date'] = hosp_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
         full_hosp_df = hosp_df[['location_id', 'Date', 'Hospitalization rate']].copy()
         # hosp_df = hosp_df.loc[hosp_df['Hospitalizations'] > 0].reset_index(drop=True)
 
         # smooth deaths
-        death_df = self._smooth_data(self.full_df, 'ln(death rate)')
+        death_df = add_moving_average(self.full_df, 'ln(death rate)', -np.inf)
         death_df['Death rate'] = np.exp(death_df['ln(death rate)'])
         full_death_df = death_df[['location_id', 'Date', 'Deaths', 'Death rate']].copy()
         # death_df = death_df.loc[death_df['Deaths'] > 0].reset_index(drop=True)
