@@ -26,25 +26,26 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
     required_columns = [COLUMNS.date, measure]
     data = data.loc[:, required_columns].set_index(COLUMNS.date).loc[:, measure]
 
-    if len(data) < window:
+    # number of data points used to correct boundaries
+    if len(data) < 6:
         return data
 
     moving_average = (data
                       .asfreq('D', method='pad')
                       .rolling(window=window, min_periods=1, center=True)
                       .mean())
-    if len(moving_average) > window:
-        # project second derivative forward at end
-        first_diff = np.array(moving_average[-window:-1]) - np.array(moving_average[-window - 1:-2])
-        second_diff = np.diff(first_diff).mean()
-        last_step = first_diff[-1] + second_diff
-        moving_average.iloc[-1] = moving_average.iloc[-2] + last_step
 
-        # project second derivative backward at beginning
-        first_diff = np.array(moving_average[2:window + 1]) - np.array(moving_average[1:window])
-        second_diff = np.diff(first_diff).mean()
-        first_step = first_diff[0] - second_diff
-        moving_average.iloc[0] = moving_average.iloc[1] - first_step
+    # project avg last two second derivative forward at end
+    first_diff = np.diff(moving_average[-5:-1])
+    second_diff = np.diff(first_diff).mean()
+    last_step = first_diff[-1] + second_diff
+    moving_average.iloc[-1] = moving_average.iloc[-2] + last_step
+
+    # project avg first two second derivative backward at beginning
+    first_diff = np.diff(moving_average[1:5])
+    second_diff = np.diff(first_diff).mean()
+    first_step = first_diff[0] - second_diff
+    moving_average.iloc[0] = moving_average.iloc[1] - first_step
     return moving_average
 
 
