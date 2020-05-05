@@ -24,7 +24,6 @@ from covid_model_deaths.social_distancing_cov import SocialDistCov
 from covid_model_deaths.utilities import submit_curvefit, CompareModelDeaths
 
 
-
 def make_cases_and_backcast_deaths(full_df: pd.DataFrame, death_df: pd.DataFrame,
                                    age_pop_df: pd.DataFrame, age_death_df: pd.DataFrame,
                                    location_ids: List[int], subnat: bool = True) -> pd.DataFrame:
@@ -123,8 +122,8 @@ def make_last_day_df(full_df: pd.DataFrame, date_mean_df: pd.DataFrame) -> pd.Da
     return last_day_df[[COLUMNS.location_id, COLUMNS.ln_death_rate, COLUMNS.days]]
 
 
-def make_leading_indicator(full_df: pd.DataFrame) -> pd.DataFrame:
-    leading = LeadingIndicator(full_df)
+def make_leading_indicator(full_df: pd.DataFrame, data_version: str = 'best') -> pd.DataFrame:
+    leading = LeadingIndicator(full_df, data_version)
     dcr_df, dhr_df, li_df = leading.produce_deaths()
     return dcr_df, dhr_df, li_df
 
@@ -132,7 +131,8 @@ def make_leading_indicator(full_df: pd.DataFrame) -> pd.DataFrame:
 def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                   age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, li_df: pd.DataFrame,
                   loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str,
-                  data_version: str, r0_file: str, code_dir: str, verbose: bool = False) -> Dict:
+                  snapshot_version: str, model_inputs_version: str, r0_file: str, 
+                  code_dir: str, verbose: bool = False) -> Dict:
     submodel_dict = {}
     N = len(loc_df)
     i = 0
@@ -218,7 +218,8 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
                 # drop back-cast for modeling file, but NOT for the social distancing covariate step
                 model_out_dir = f'{output_directory}/model_data_{cov_source}_{k}'
                 mod_df.to_csv(f'{model_out_dir}/{location_id}.csv', index=False)
-                sd_cov = SocialDistCov(mod_df, date_mean_df, data_version=data_version)
+                sd_cov = SocialDistCov(mod_df, date_mean_df, 
+                                       snapshot_version=snapshot_version, model_inputs_version=model_inputs_version)
                 if cov_source in cmd_globals.MOBILITY_SOURCES:
                     sd_cov_df = sd_cov.get_cov_df(weights=[None], k=k, empirical_weight_source=cov_source)
                 else:
@@ -411,9 +412,6 @@ def get_backcast_location_ids(data: pd.DataFrame, most_detailed: bool = True) ->
     return location_ids
 
 
-
-
-
 def date_mean(dates: pd.Series) -> datetime:
     dt_min = dates.min()
     deltas = pd.Series([x-dt_min for x in dates])
@@ -495,7 +493,9 @@ def smooth_data(output_root, file_name):
 
     out = pd.concat([smoothed_observed.drop(columns='deaths'), predicted]).sort_index().reset_index()
     out[draw_cols] = out.groupby('location_id')[draw_cols].cumsum()
-    out.to_csv(root / ('smoothed_' + file_name.split('/')[-1]), index=False)
+    smooth_path = root / ('smoothed_' + file_name.split('/')[-1])
+    out.to_csv(smooth_path, index=False)
+    return str(smooth_path)
 
 
 def get_peak_from_model(location_id, submodel_dirs):

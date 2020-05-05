@@ -38,7 +38,7 @@ def add_moving_average(data: pd.DataFrame, measure: str, rate_threshold: float, 
 
 
 class LeadingIndicator:
-    def __init__(self, full_df: pd.DataFrame, data_version: str = 'best'):
+    def __init__(self, full_df: pd.DataFrame, data_version: str):
         # expect passed in file to be `full_data.csv`
         self.data_version = data_version
         self.full_df = self._clean_up_dataset(full_df)
