@@ -54,6 +54,22 @@ class LeadingIndicator:
         # expect passed in file to be `full_data.csv`
         self.data_version = data_version
         self.full_df = self._clean_up_dataset(full_df)
+        
+    def _to_daily(self, df: pd.DataFrame, cum_var: str, daily_var: str) -> pd.DataFrame:
+        df = df.sort_values(['location_id', 'Date']).reset_index(drop=True)
+        first_day = df['Date'] == df.groupby('location_id').Date.transform(min)
+        delta_values = df[cum_var].values[1:] - df[cum_var].values[:-1]
+        delta_values = delta_values[~first_day.values[1:]]
+        df.loc[first_day, daily_var] = df[cum_var]
+        df.loc[~first_day, daily_var] = delta_values
+        
+        return df
+    
+    def _to_cumulative(self, df: pd.DataFrame, daily_var: str, cum_var: str) -> pd.DataFrame:
+        df = df.sort_values(['location_id', 'Date']).reset_index(drop=True)
+        df[cum_var] = df.groupby('location_id', as_index=False)[daily_var].cumsum()
+        
+        return df
 
     def _tests_per_capita(self, pop_df: pd.DataFrame) -> pd.DataFrame:
         # load testing data from snapshot
@@ -65,7 +81,7 @@ class LeadingIndicator:
             f'/ihme/covid-19/snapshot-data/{self.data_version}/covid_onedrive/Testing/global_admin0_tests.csv')
         g_df['Date'] = pd.to_datetime(g_df['date'], format='%d.%m.%Y')
         g_df = g_df.rename(index=str, columns={'total_tests': 'Tests'})
-        df = us_df[['location_id', 'Date', 'Tests']].append(g_df[['location_id', 'date', 'Tests']])
+        df = us_df[['location_id', 'Date', 'Tests']].append(g_df[['location_id', 'Date', 'Tests']])
         # df = pd.read_csv('/home/j/temp/kcausey/covid19/test_prop/data_smooth_4_27_global.csv')
         # df = df.rename(index=str, columns={'daily_total':'Tests'})
         # df['Date'] = pd.to_datetime(df['date'])
@@ -76,50 +92,29 @@ class LeadingIndicator:
         # df['Tests'] = df.groupby('location_id', as_index=False)['Tests'].cumsum()
         df = df.merge(pop_df)
         df['Testing rate'] = df['Tests'] / df['population']
-
+        
         # smooth
         df['ln(testing rate)'] = np.log(df['Testing rate'])
         df.loc[df['Tests'] == 0, 'ln(testing rate)'] = np.log(0.1 / df['population'])
         df['day0'] = df.groupby('location_id', as_index=False)['Date'].transform(min)
         df['Days'] = df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
-        df = self._smooth_data(df, 'ln(testing rate)')
         df['location_id'] = df['location_id'].astype(int)
-        df['Testing rate'] = np.exp(df['ln(testing rate)'])
 
-        return df[['location_id', 'Date', 'Tests', 'Testing rate']]
+        return df[['location_id', 'Date', 'Days', 'Tests', 'Testing rate', 'ln(testing rate)']]
 
     def _account_for_positivity(self, t1: float, t2: float,
                                 c1: float, c2: float,
-                                logit_pos_int: float = -1.67,
-                                logit_pos_logit_test: float = -0.643) -> float:
-        '''
-        #t1 = 0.0009422044413620219
-        t1 = 500 / 1e6
-        #t2 = 0.0005275541285749835
-        t2 = 800 / 1e6
-        #c1 = 3.651402444897634e-05
-        c1 = 100 / 1e6
-        #c2 = 4.6986292647525517e-05
-        c2 = 180 / 1e6
-        logit_pos_int = -8.05
-        logit_pos_logit_test = -0.78
-        '''
-        # if c2 <= c1 or t2 <= t1:
-        #     # should we do something about reduced testing?
-        #     cases = c2
-        # else:
+                                logit_pos_int: float = -8.05,
+                                logit_pos_logit_test: float = -0.78) -> float:
         logit = lambda x: np.log(x / (1 - x))
         expit = lambda x: 1 / (1 + np.exp(-x))
 
         p1 = expit(logit_pos_int + logit_pos_logit_test * logit(t1))
         p2 = expit(logit_pos_int + logit_pos_logit_test * logit(t2))
         increase_from_testing = (t2 * p2 - t1 * p1) / (t1 * p1)
-        # increase_from_testing = ((t2-t1) / t1) * (1 - positivity_effect)
 
         excess_reporting = ((c2 - c1) / c1) - increase_from_testing
 
-        # if excess_reporting < 0:
-        #    excess_reporting = 0
         cases = c1 * (1 + excess_reporting)
 
         if cases < 0:
@@ -130,30 +125,30 @@ class LeadingIndicator:
     def _control_for_testing(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy().reset_index(drop=True)
         df = df.sort_values('Date').reset_index(drop=True)
-        df['Daily testing rate'] = np.nan
-        df['Daily testing rate'][1:] = df['Testing rate'].values[1:] - df['Testing rate'].values[:-1]
-        df['Daily case rate'] = np.nan
-        df['Daily case rate'][1:] = df['Confirmed case rate'].values[1:] - df['Confirmed case rate'].values[:-1]
+        df = self._to_daily(df, 'Testing rate', 'Daily testing rate')
+        df = self._to_daily(df, 'Confirmed case rate', 'Daily case rate')
+        # df['Daily testing rate'] = np.nan
+        # df['Daily testing rate'][1:] = df['Testing rate'].values[1:] - df['Testing rate'].values[:-1]
+        # df['Daily case rate'] = np.nan
+        # df['Daily case rate'][1:] = df['Confirmed case rate'].values[1:] - df['Confirmed case rate'].values[:-1]
 
-        # keep last 8 days
+        # keep last 8 days, get avg daily cases and testing from 8-10, then just keep 8
         future_df = df.loc[df['Date'] >= df['Date'].max() - pd.Timedelta(days=8)]
 
         # use case data if it is less than 3 days behind
         if future_df['Testing rate'].isnull().sum() < 3:
             future_df = future_df.sort_values('Date').reset_index(drop=True)
-            future_df = future_df.loc[~future_df['Testing rate'].isnull()]
             start_cases = future_df['Daily case rate'][0]
             start_tests = future_df['Daily testing rate'][0]
-            # testing = stats.linregress(future_df.index.values, np.log(future_df['Testing rate'].values))
-            # future_df['Testing estimate'] = np.exp(testing.intercept + testing.slope * future_df.index.values)
+            future_df = future_df.loc[~future_df['Testing rate'].isnull()]
 
-            future_df['Adjusted daily case rate'] = future_df.apply(
+            future_df['Daily case rate'] = future_df.apply(
                 lambda x: self._account_for_positivity(start_tests, x['Daily testing rate'],
                                                        start_cases, x['Daily case rate']),
                 axis=1
             )
-            future_df['Adjusted daily case rate'][0] = future_df['Confirmed case rate'][0]
-            future_df['Adjusted case rate'] = future_df['Adjusted daily case rate'].cumsum()
+            future_df['Daily case rate'][0] = future_df['Confirmed case rate'][0]
+            future_df = self._to_cumulative(future_df, 'Daily case rate', 'Confirmed case rate')
             df = pd.concat([df.loc[df['Date'] < df['Date'].max() - pd.Timedelta(days=8)],
                             future_df]).reset_index(drop=True)
 
@@ -184,16 +179,18 @@ class LeadingIndicator:
 
         return df
 
-    def _smooth_data(self, df: pd.DataFrame, smooth_var: str, reset_days: bool = False) -> pd.DataFrame:
+    def _smooth_data(self, df: pd.DataFrame, smooth_var: str, reset_days: bool = False, n_smooths: int = 10) -> pd.DataFrame:
         df = df.copy()
-        loc_dfs = [df.loc[df['location_id'] == l].reset_index(drop=True) for l in df.location_id.unique()]
-        loc_dfs = [moving_average(loc_df, smooth_var, reset_days=reset_days) for loc_df in loc_dfs]
-        if loc_dfs:
-            df = pd.concat(loc_dfs)
+        for i in range(n_smooths):
+            loc_dfs = [df.loc[df['location_id'] == l].reset_index(drop=True) for l in df.location_id.unique()]
+            loc_dfs = [moving_average(loc_df, smooth_var, reset_days=reset_days) for loc_df in loc_dfs]
+            if loc_dfs:
+                df = pd.concat(loc_dfs).reset_index(drop=True)
 
         return df
 
     def _average_over_last_days(self, df: pd.DataFrame, avg_var: str, mean_window: int = 3) -> pd.DataFrame:
+        df = df.copy()
         df['latest date'] = df.groupby('location_id', as_index=False)['Date'].transform(max)
         df['last days'] = df['latest date'].apply(lambda x: x - pd.Timedelta(days=mean_window - 1))
         df = df.loc[df['Date'] >= df['last days']]
@@ -208,6 +205,16 @@ class LeadingIndicator:
         case_df['Date'] = case_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
         full_case_df = case_df[['location_id', 'Date', 'Confirmed case rate']].copy()
         # case_df = case_df.loc[case_df['Confirmed'] > 0].reset_index(drop=True)
+        
+        # adjust last 8 days of cases based on changes in testing over that time
+        test_df = self._tests_per_capita(case_df[['location_id', 'population']].drop_duplicates())
+        test_df = self._smooth_data(test_df, 'ln(testing rate)')
+        test_df['Testing rate'] = np.exp(test_df['ln(testing rate)'])
+        test_df['Date'] = test_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
+        case_df = case_df.merge(test_df, how='left')
+        case_df = pd.concat(
+            [self._control_for_testing(case_df.loc[case_df['location_id'] == l]) for l in case_df.location_id.unique()]
+        )
 
         # do the same thing with hospitalizations (not present for all locs, so subset)
         hosp_df = self._smooth_data(self.full_df.loc[~self.full_df['Hospitalizations'].isnull()],
@@ -225,32 +232,31 @@ class LeadingIndicator:
         # death_df = death_df.loc[death_df['Deaths'] > 0].reset_index(drop=True)
 
         # calc ratios by day
-        dcr_df = death_df[['location_id', 'Date', 'Death rate']].merge(
-            case_df[['location_id', 'Date', 'Confirmed case rate']]
+        death_df = self._to_daily(death_df, 'Death rate', 'Daily death rate')
+        case_df = self._to_daily(case_df, 'Confirmed case rate', 'Daily case rate')
+        hosp_df = self._to_daily(hosp_df, 'Hospitalization rate', 'Daily hospitalization rate')
+        dcr_df = death_df[['location_id', 'Date', 'Daily death rate']].merge(
+            case_df[['location_id', 'Date', 'Daily case rate']]
         )
-        dhr_df = death_df[['location_id', 'Date', 'Death rate']].merge(
-            hosp_df[['location_id', 'Date', 'Hospitalization rate']]
+        dhr_df = death_df[['location_id', 'Date', 'Daily death rate']].merge(
+            hosp_df[['location_id', 'Date', 'Daily hospitalization rate']]
         )
-        dcr_df['dcr lag8'] = dcr_df['Death rate'] / dcr_df['Confirmed case rate']
-        dhr_df['dhr lag8'] = dhr_df['Death rate'] / dhr_df['Hospitalization rate']
+        dcr_df['dcr lag8'] = dcr_df['Daily death rate'] / dcr_df['Daily case rate']
+        dhr_df['dhr lag8'] = dhr_df['Daily death rate'] / dhr_df['Daily hospitalization rate']
 
-        # average ratios of last 3 days
-        dcr_df = self._average_over_last_days(dcr_df, 'dcr lag8', 3)
+        # average ratios of ~last 3 days~ -> just use last day, is smoother
+        dcr_df = self._average_over_last_days(dcr_df, 'dcr lag8', 1)
         if not dhr_df.empty:
-            dhr_df = self._average_over_last_days(dhr_df, 'dhr lag8', 3)
+            dhr_df = self._average_over_last_days(dhr_df, 'dhr lag8', 1)
         else:
             dhr_df = dhr_df[['location_id', 'dhr lag8']]
 
         return full_case_df, full_hosp_df, full_death_df, dcr_df, dhr_df
 
     def _stream_out_deaths(self, df: pd.DataFrame, death_df: pd.DataFrame) -> pd.DataFrame:
-        # convert to daily, fix to last day of observed deaths
+        # fix to last day of observed deaths
         df = df.sort_values(['location_id', 'Date']).reset_index(drop=True)
-        daily = df['Death rate'].values[1:] - df['Death rate'].values[:-1]
-        df['Daily death rate'] = np.nan
-        df['Daily death rate'][1:] = daily
-        del df['Death rate']
-        df = df.merge(death_df[['location_id', 'last date', 'Death rate']])
+        df = df[['location_id', 'Date', 'Daily death rate']].merge(death_df[['location_id', 'last date', 'Death rate']])
         df = df.loc[
             df['Date'] > df['last date']]  # will exclude days where diff is one locations last day and anothers first
         df = df.sort_values(['location_id', 'Date']).reset_index(drop=True)
@@ -260,11 +266,12 @@ class LeadingIndicator:
         return df
 
     def _combine_data(self, df: pd.DataFrame, rate_var: str, ratio_var: str,
-                      ratio_df: pd.DataFrame, na_fill: float) -> pd.DataFrame:
+                      ratio_df: pd.DataFrame, na_fill: float,
+                      combine_var: str) -> pd.DataFrame:
         df = df.merge(ratio_df, how='left')
         df['location_id'] = df['location_id'].astype(int)
         df[ratio_var] = df[ratio_var].fillna(na_fill)
-        df['Death rate'] = df[rate_var] * df[ratio_var]
+        df[combine_var] = df[rate_var] * df[ratio_var]
         del df[rate_var]
         del df[ratio_var]
 
@@ -304,10 +311,14 @@ class LeadingIndicator:
         dcr_df['location_id'] = dcr_df['location_id'].astype(int)
 
         # apply ratio to get deaths (use <10 deaths floor as ratio for places without deaths thus far)
-        dc_df = self._combine_data(case_df, 'Confirmed case rate', 'dcr lag8',
-                                   dcr_df[['location_id', 'dcr lag8']], 0.03)
-        dh_df = self._combine_data(hosp_df, 'Hospitalization rate', 'dhr lag8',
-                                   dhr_df[['location_id', 'dhr lag8']], 0.1)
+        case_df = self._to_daily(case_df, 'Confirmed case rate', 'Daily case rate')
+        hosp_df = self._to_daily(hosp_df, 'Hospitalization rate', 'Daily hospitalization rate')
+        dc_df = self._combine_data(case_df, 'Daily case rate', 'dcr lag8',
+                                   dcr_df[['location_id', 'dcr lag8']], 0.03,
+                                   combine_var='Daily death rate')
+        dh_df = self._combine_data(hosp_df, 'Daily hospitalization rate', 'dhr lag8',
+                                   dhr_df[['location_id', 'dhr lag8']], 0.15,
+                                   combine_var='Daily death rate')
 
         # start daily deaths from last data point
         death_df['location_id'] = death_df['location_id'].astype(int)

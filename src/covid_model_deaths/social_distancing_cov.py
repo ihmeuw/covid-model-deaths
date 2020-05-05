@@ -194,10 +194,11 @@ class SocialDistCov:
         df.loc[df['ci_psd1'].isnull(), 'ci_psd1'] = df['ci_sd1']
         df.loc[df['ci_psd3'].isnull(), 'ci_psd3'] = df['ci_sd3']
 
-        # fill nulls with current 3 weeks
+        # fill nulls with current day if mobility is reduced more than 40%, otherwise add 3 weeks
         for closure_code in code_map.keys():
             df.loc[df[closure_code].isnull(), closure_code] =  df.loc[df[closure_code].isnull()].apply(
-                lambda x: (self.current_date - x['threshold_date']).days + 21, 
+                lambda x: (self.current_date - x['threshold_date']).days if x['location_id'] in self.vol_locs
+                          else (self.current_date - x['threshold_date']).days + 21, 
                 axis=1
             )
 
