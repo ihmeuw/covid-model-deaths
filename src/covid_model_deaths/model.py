@@ -522,13 +522,13 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 
 def run_death_models():
     # args = argparse.Namespace(
-    #     cov_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373_covariate.csv', 
+    #     cov_file='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/model_data_descartes_21/555_covariate.csv', 
     #     covariate_effect='gamma', 
-    #     data_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373.csv', 
-    #     last_day_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/last_day.csv', 
-    #     model_location_id=60373, 
+    #     data_file='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/model_data_descartes_21/555.csv', 
+    #     last_day_file='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/last_day.csv', 
+    #     model_location_id=555, 
     #     n_draws=333, 
-    #     output_dir='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373', 
+    #     output_dir='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/model_data_descartes_21/555', 
     #     peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv'
     # )
     parser = argparse.ArgumentParser()
@@ -592,9 +592,16 @@ def run_death_models():
     peaked_df = pd.read_csv(args.peaked_file)
     peaked_df['location_id'] = '_' + peaked_df['location_id'].astype(str)
 
-    # get true ln(dr) on last day
-    last_day_df = pd.read_csv(args.last_day_file)
-    last_day_df = last_day_df.loc[last_day_df['location_id'] == args.model_location_id]
+    # get ln(dr) on last day
+    model_loc_df = df.loc[(df['location_id'] == f'_{args.model_location_id}') & (df['pseudo'] == 0)]
+    if not model_loc_df.empty:
+        last_day_df = model_loc_df.sort_values('Days', ascending=False).reset_index(drop=True).iloc[:1]
+        last_day_df['Days'] = int(np.round(last_day_df['Days']))
+        last_day_df = last_day_df.rename(index=str, columns={'ln(age-standardized death rate)':'ln(death rate)'})
+        last_day_df = last_day_df[['Days', 'ln(death rate)']]
+    else:
+        last_day_df = pd.read_csv(args.last_day_file)
+        last_day_df = last_day_df.loc[last_day_df['location_id'] == args.model_location_id]
     if last_day_df.empty:
         fix_point = None
         fix_day = None

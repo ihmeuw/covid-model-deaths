@@ -160,8 +160,8 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
         mod_df[COLUMNS.pseudo] = 0
 
         # tack on deaths from cases if in dataset
-        # South Dakota, Iowa, France
-        if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538, 80]:
+        # South Dakota, Iowa, France, King/Snohomish, Other Counties
+        if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538, 80, 60405, 60407]:
             # get future days
             last_date = full_df.loc[full_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
             loc_cd_df = li_df.loc[(li_df[COLUMNS.location_id] == location_id)
@@ -484,7 +484,8 @@ def smooth_data(output_root, file_name):
     smoothed_data = smoothed_data.set_index('location_id').sort_index()
     last_observed = last_observed.loc[smoothed_data.index].sort_index()
     smoothed_observed = smoothed_data[smoothed_data['date'] <= last_observed].reset_index()
-    smoothed_observed['observed'] = False
+    #smoothed_observed['observed'] = False
+    smoothed_observed['observed'] = True
     smoothed_observed = (smoothed_observed[['location_id', 'location', 'date', 'observed', 'deaths']]
                          .set_index(['location_id', 'location', 'date', 'observed']))
 

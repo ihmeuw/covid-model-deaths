@@ -40,7 +40,7 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
     # # second_diff = np.diff(first_diff).mean()
     # # last_step = first_diff[-1] + second_diff
     # project last derivative forward at end
-    last_step = np.diff(moving_average[-window:-1]) # np.mean(np.diff(moving_average[-window - 1:-1]))
+    last_step = np.diff(moving_average[-3:-1]) # np.mean(np.diff(moving_average[-window - 1:-1]))
     moving_average.iloc[-1] = moving_average.iloc[-2] + last_step
 
     # # # project avg first two second derivative backward at beginning
@@ -48,7 +48,7 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
     # # second_diff = np.diff(first_diff).mean()
     # # first_step = first_diff[0] - second_diff
     # project first derivative forward at beginning
-    first_step = np.mean(np.diff(moving_average[1:window]))
+    first_step = np.diff(moving_average[1:3])  # np.mean(np.diff(moving_average[1:window + 1]))
     moving_average.iloc[0] = moving_average.iloc[1] - first_step
     return moving_average
 
