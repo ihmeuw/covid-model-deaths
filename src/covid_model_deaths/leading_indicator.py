@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from covid_model_deaths.globals import COLUMNS
+from covid_model_deaths.preprocessing import expanding_moving_average_by_location
 
 def add_moving_average(data: pd.DataFrame, measure: str, rate_threshold: float, n_smooths: int = 10) -> pd.DataFrame:
     """Smooths over the log age specific death rate.
