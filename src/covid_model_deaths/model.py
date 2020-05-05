@@ -592,16 +592,9 @@ def run_death_models():
     peaked_df = pd.read_csv(args.peaked_file)
     peaked_df['location_id'] = '_' + peaked_df['location_id'].astype(str)
 
-    # get ln(dr) on last day
-    model_loc_df = df.loc[(df['location_id'] == f'_{args.model_location_id}') & (df['pseudo'] == 0)]
-    if not model_loc_df.empty:
-        last_day_df = model_loc_df.sort_values('Days', ascending=False).reset_index(drop=True).iloc[:1]
-        last_day_df['Days'] = int(np.round(last_day_df['Days']))
-        last_day_df = last_day_df.rename(index=str, columns={'ln(age-standardized death rate)':'ln(death rate)'})
-        last_day_df = last_day_df[['Days', 'ln(death rate)']]
-    else:
-        last_day_df = pd.read_csv(args.last_day_file)
-        last_day_df = last_day_df.loc[last_day_df['location_id'] == args.model_location_id]
+    # get true ln(dr) on last day
+    last_day_df = pd.read_csv(args.last_day_file)
+    last_day_df = last_day_df.loc[last_day_df['location_id'] == args.model_location_id]
     if last_day_df.empty:
         fix_point = None
         fix_day = None
