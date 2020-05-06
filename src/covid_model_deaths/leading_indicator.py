@@ -258,26 +258,26 @@ class LeadingIndicator:
         death_df = death_df.loc[death_df['Date'] == death_df['last date']]
         death_df = death_df[['location_id', 'last date', 'Deaths', 'Death rate']]
 
-        # set limits on death-to-case ratio based on number of deaths...
-        #   - if >= 10, use 2.5th/97.5th of ratios in places with more than
-        #     30 deaths (0.02, 0.2)
-        #   - if < 10, use 10th/90th of that group (0.03, 0.15)
-        dcr_df = dcr_df.merge(death_df[['location_id', 'Deaths']])
-        dcr_df.loc[(dcr_df['Deaths'] >= 10) & (dcr_df['dcr lag8'] < 0.02), 'dcr lag8'] = 0.02
-        dcr_df.loc[(dcr_df['Deaths'] >= 10) & (dcr_df['dcr lag8'] > 0.2), 'dcr lag8'] = 0.2
-        dcr_df.loc[(dcr_df['Deaths'] < 10) & (dcr_df['dcr lag8'] < 0.03), 'dcr lag8'] = 0.03
-        dcr_df.loc[(dcr_df['Deaths'] < 10) & (dcr_df['dcr lag8'] > 0.15), 'dcr lag8'] = 0.15
-        del dcr_df['Deaths']
+        # # set limits on death-to-case ratio based on number of deaths...
+        # #   - if >= 10, use 2.5th/97.5th of ratios in places with more than
+        # #     30 deaths (0.02, 0.2)
+        # #   - if < 10, use 10th/90th of that group (0.03, 0.15)
+        # dcr_df = dcr_df.merge(death_df[['location_id', 'Deaths']])
+        # dcr_df.loc[(dcr_df['Deaths'] >= 10) & (dcr_df['dcr lag8'] < 0.02), 'dcr lag8'] = 0.02
+        # dcr_df.loc[(dcr_df['Deaths'] >= 10) & (dcr_df['dcr lag8'] > 0.2), 'dcr lag8'] = 0.2
+        # dcr_df.loc[(dcr_df['Deaths'] < 10) & (dcr_df['dcr lag8'] < 0.03), 'dcr lag8'] = 0.03
+        # dcr_df.loc[(dcr_df['Deaths'] < 10) & (dcr_df['dcr lag8'] > 0.15), 'dcr lag8'] = 0.15
+        # del dcr_df['Deaths']
         dcr_df['location_id'] = dcr_df['location_id'].astype(int)
 
-        # apply ratio to get deaths (use <10 deaths floor as ratio for places without deaths thus far)
+        # apply ratio to get deaths
         case_df = self._to_daily(case_df, 'Confirmed case rate', 'Daily case rate')
         hosp_df = self._to_daily(hosp_df, 'Hospitalization rate', 'Daily hospitalization rate')
         dc_df = self._combine_data(case_df, 'Daily case rate', 'dcr lag8',
-                                   dcr_df[['location_id', 'dcr lag8']], 0.03,
+                                   dcr_df[['location_id', 'dcr lag8']], np.nan,  # 0.03,
                                    combine_var='Daily death rate')
         dh_df = self._combine_data(hosp_df, 'Daily hospitalization rate', 'dhr lag8',
-                                   dhr_df[['location_id', 'dhr lag8']], 0.15,
+                                   dhr_df[['location_id', 'dhr lag8']], np.nan,  # 0.15,
                                    combine_var='Daily death rate')
 
         # start daily deaths from last data point

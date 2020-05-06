@@ -164,11 +164,7 @@ class Drawer:
 
         # drop predictions before last day and slot in
         obs_end = filled_df['date'].max()
-        ## ##
-        # we will average over last 10 days
         filled_df['observed'] = True
-        filled_df.loc[len(filled_df)-10:, 'observed'] = False
-        ## ##
         df = df.loc[df['date'] > obs_end]
         df['observed'] = False
         df = filled_df[['location_id', 'date', 'observed'] + draw_cols].append(

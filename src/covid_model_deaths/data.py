@@ -159,6 +159,7 @@ def add_moving_average_rates(data: pd.DataFrame, measure: str, rate_threshold: f
         # noinspection PyTypeChecker
         moving_average[moving_average < rate_threshold] = rate_threshold
         data = data.set_index([COLUMNS.location_id, COLUMNS.date])
+        
         data = (pd.concat([data.drop(columns=measure), moving_average], axis=1)
                 .fillna(method='pad')
                 .reset_index())

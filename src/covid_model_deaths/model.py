@@ -21,7 +21,7 @@ warnings.filterwarnings('ignore')
 RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
-PSEUDO_SE = 2
+PSEUDO_SE = 3
 N_B = 43
 PRED_DAYS = 150
 

@@ -293,11 +293,13 @@ def compile_draws(loc_df: pd.DataFrame, submodel_dict: Dict,
 
 
 def average_draws(raw_draw_path: str,
-                  yesterday_path: str, before_yesterday_path: str) -> pd.DataFrame:
+                  yesterday_path: str, before_yesterday_path: str,
+                  past_avg_window: int) -> pd.DataFrame:
     avg_df = moving_average_predictions(
         today_data_path=raw_draw_path,
         yesterday_data_path=yesterday_path,
-        day_before_yesterday_path=before_yesterday_path
+        day_before_yesterday_path=before_yesterday_path,
+        past_avg_window=past_avg_window
     )
     avg_df['date'] = pd.to_datetime(avg_df['date'])
     return avg_df
