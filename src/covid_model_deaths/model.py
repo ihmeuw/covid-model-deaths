@@ -21,8 +21,8 @@ warnings.filterwarnings('ignore')
 RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
-PSEUDO_SE = 3
-N_B = 29
+PSEUDO_SE = 2
+N_B = 43
 PRED_DAYS = 150
 
 
@@ -371,7 +371,7 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     }
 
     # prepare data (must exponentiate smoothed column, non-logged col is not smoothed)
-    df['obs_se'] = 1 / (1 + df['days'])
+    df['obs_se'] = 1 / (1 + df['days']**0.6)
     df.loc[df['pseudo'] == 1, 'obs_se'] = PSEUDO_SE
     df['Age-standardized death rate'] = np.exp(df['ln(age-standardized death rate)'])
     df = process_input(df, 'location_id', 'days', 'Age-standardized death rate',

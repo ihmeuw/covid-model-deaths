@@ -13,7 +13,8 @@ import pandas as pd
 import tqdm
 
 from covid_model_deaths.compare_model_average import CompareAveragingModelDeaths
-from covid_model_deaths.data import compute_backcast_log_age_specific_death_rates
+from covid_model_deaths.data import (compute_backcast_log_age_specific_death_rates,
+                                     drop_lagged_reports_by_location, add_moving_average_rates)
 from covid_model_deaths.drawer import Drawer
 from covid_model_deaths.impute_death_threshold import impute_death_threshold as impute_death_threshold_
 from covid_model_deaths.leading_indicator import LeadingIndicator
@@ -160,8 +161,8 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
         mod_df[COLUMNS.pseudo] = 0
 
         # tack on deaths from cases if in dataset
-        # South Dakota, Iowa, France, King/Snohomish, Other Counties
-        if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538, 80, 60405, 60407]:
+        # South Dakota, Iowa
+        if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538]:
             # get future days
             last_date = full_df.loc[full_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
             loc_cd_df = li_df.loc[(li_df[COLUMNS.location_id] == location_id)
@@ -470,6 +471,7 @@ def smooth_data(output_root, file_name):
         if p.suffix == '.csv' and 'covariate' not in p.name:
             df = pd.read_csv(p)
             df = df[df.location_id == int(p.stem)]
+            df = df.loc[df['pseudo'] == 0]
             dfs.append(df)
     smoothed_data = pd.concat(dfs)
     smoothed_data = (smoothed_data[['location_id', 'Location', 'Date', 'ln(age-standardized death rate)', 'population']]
@@ -533,3 +535,25 @@ def save_points_and_peaks(loc_df: pd.DataFrame, submodel_dict: dict,
     peak_dates_df = peak_dates_df[['location_id', 'Date', 'Daily death rate']].reset_index(drop=True)
     peak_dates_df = peak_dates_df.rename(index=str, columns={'Date':'peak_date'})
     peak_dates_df.to_csv(root / 'peak_dates.csv', index=False)
+
+
+def get_smoothed(full_df: pd.DataFrame):
+    case_df = drop_lagged_reports_by_location(full_df.copy(), 'Confirmed')
+    case_df['day0'] = case_df.groupby('location_id', as_index=False)['Date'].transform(min)
+    case_df['Days'] = case_df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
+    case_df = case_df[['location_id', 'Date', 'Days', 'Confirmed', 'Confirmed case rate', 'population']]
+    case_df.loc[case_df['Confirmed'] == 0, 'Confirmed case rate'] = 0.1 / case_df['population']
+    case_df['ln(case rate)'] = np.log(case_df['Confirmed case rate'])
+    case_df = add_moving_average_rates(case_df, 'ln(case rate)', -np.inf)
+    case_df['Confirmed case rate'] = np.exp(case_df['ln(case rate)'])
+    
+    death_df = drop_lagged_reports_by_location(full_df.copy(), 'Deaths')
+    death_df['day0'] = death_df.groupby('location_id', as_index=False)['Date'].transform(min)
+    death_df['Days'] = death_df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
+    death_df = death_df[['location_id', 'Date', 'Days', 'Deaths', 'Death rate', 'population']]
+    death_df.loc[death_df['Deaths'] == 0, 'Death rate'] = 0.1 / death_df['population']
+    death_df['ln(death rate)'] = np.log(death_df['Death rate'])
+    death_df = add_moving_average_rates(death_df, 'ln(death rate)', -np.inf)
+    death_df['Death rate'] = np.exp(death_df['ln(death rate)'])
+    
+    return case_df, death_df
