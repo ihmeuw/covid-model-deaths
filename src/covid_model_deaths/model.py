@@ -437,7 +437,8 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     return model, cumulative_draws
 
 
-def plot_location(location, location_name, covariate_val, tm, lm, model_instance, draw, population, pdf=None, pred_days=PRED_DAYS):
+def plot_location(location, location_name, covariate_val, tm, lm, 
+                  model_instance, draw, population, pdf=None, pred_days=PRED_DAYS):
     # get past curve point estimates
     tight_curve_t = np.arange(pred_days)
     tight_curve = tm.predict(tight_curve_t, group_name=location)

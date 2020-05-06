@@ -150,7 +150,7 @@ def add_moving_average_rates(data: pd.DataFrame, measure: str, rate_threshold: f
         column with the original observed asdr.
 
     """
-    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.days, measure]
+    required_columns = [COLUMNS.location_id, COLUMNS.date, measure]
     assert set(required_columns).issubset(data.columns)
     data[f'Observed {measure}'] = data[measure]
     # smooth n times

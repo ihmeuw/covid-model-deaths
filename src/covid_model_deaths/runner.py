@@ -450,9 +450,8 @@ def display_total_deaths(draw_df: pd.DataFrame):
 
 # FIXME: This is a hacked together thing that needs some love before it goes in a real
 #  production run.
-def smooth_data(output_root, file_name):
+def swap_observed(output_root: str, file_name: str, new_file_name: str, new_past_df: pd.DataFrame):
     root = Path(output_root)
-    data_dir = root / 'model_data_google_21'
 
     draw_cols = [f'draw_{d}' for d in range(1000)]
 
@@ -466,39 +465,29 @@ def smooth_data(output_root, file_name):
     last_observed = model_data[model_data.observed].groupby('location_id').date.max()
     predicted = model_data[~model_data.observed]
     predicted = predicted.set_index(['location_id', 'location', 'date', 'observed'])
-    dfs = []
-    for p in data_dir.iterdir():
-        if p.suffix == '.csv' and 'covariate' not in p.name:
-            df = pd.read_csv(p)
-            df = df[df.location_id == int(p.stem)]
-            df = df.loc[df['pseudo'] == 0]
-            dfs.append(df)
-    smoothed_data = pd.concat(dfs)
-    smoothed_data = (smoothed_data[['location_id', 'Location', 'Date', 'ln(age-standardized death rate)', 'population']]
-                     .rename(columns={'Location': 'location', 'Date': 'date'}))
-    smoothed_data['deaths'] = np.exp(smoothed_data['ln(age-standardized death rate)']) * smoothed_data['population']
-    smoothed_data['date'] = pd.to_datetime(smoothed_data['date'])
-    smoothed_data = smoothed_data.sort_values(['location_id', 'date']).reset_index(drop=True)
-    first_day_smoothed = smoothed_data['date'] == smoothed_data.groupby('location_id').date.transform(min)
-    delta_smoothed = smoothed_data['deaths'].values[1:] - smoothed_data['deaths'].values[:-1]
-    delta_smoothed = delta_smoothed[~first_day_smoothed.values[1:]]
-    smoothed_data.loc[~first_day_smoothed, 'deaths'] = delta_smoothed
-    smoothed_data = smoothed_data.set_index('location_id').sort_index()
-    last_observed = last_observed.loc[smoothed_data.index].sort_index()
-    smoothed_observed = smoothed_data[smoothed_data['date'] <= last_observed].reset_index()
+    new_past_df = (new_past_df[['location_id', 'Location', 'Date', 'Deaths', 'population']]
+                     .rename(columns={'Location': 'location', 'Date': 'date', 'Deaths': 'deaths'}))
+    #new_past_df['deaths'] = np.exp(new_past_df['ln(age-standardized death rate)']) * new_past_df['population']
+    new_past_df['date'] = pd.to_datetime(new_past_df['date'])
+    new_past_df = new_past_df.sort_values(['location_id', 'date']).reset_index(drop=True)
+    first_day_past = new_past_df['date'] == new_past_df.groupby('location_id').date.transform(min)
+    delta_past = new_past_df['deaths'].values[1:] - new_past_df['deaths'].values[:-1]
+    delta_past = delta_past[~first_day_past.values[1:]]
+    new_past_df.loc[~first_day_past, 'deaths'] = delta_past
+    new_past_df = new_past_df.set_index('location_id').sort_index()
+    last_observed = last_observed.loc[new_past_df.index].sort_index()
+    new_past_df = new_past_df[new_past_df['date'] <= last_observed].reset_index()
     #smoothed_observed['observed'] = False
-    smoothed_observed['observed'] = True
-    smoothed_observed = (smoothed_observed[['location_id', 'location', 'date', 'observed', 'deaths']]
-                         .set_index(['location_id', 'location', 'date', 'observed']))
+    new_past_df['observed'] = True
+    new_past_df = (new_past_df[['location_id', 'location', 'date', 'observed', 'deaths']]
+                   .set_index(['location_id', 'location', 'date', 'observed']))
 
     for i in range(1000):
-        smoothed_observed[f'draw_{i}'] = smoothed_observed['deaths']
+        new_past_df[f'draw_{i}'] = new_past_df['deaths']
 
-    out = pd.concat([smoothed_observed.drop(columns='deaths'), predicted]).sort_index().reset_index()
+    out = pd.concat([new_past_df.drop(columns='deaths'), predicted]).sort_index().reset_index()
     out[draw_cols] = out.groupby('location_id')[draw_cols].cumsum()
-    smooth_path = root / ('smoothed_' + file_name.split('/')[-1])
-    out.to_csv(smooth_path, index=False)
-    return str(smooth_path)
+    out.to_csv(root / new_file_name, index=False)
 
 
 def get_peak_from_model(location_id, submodel_dirs):
@@ -546,6 +535,7 @@ def get_smoothed(full_df: pd.DataFrame):
     case_df['ln(case rate)'] = np.log(case_df['Confirmed case rate'])
     case_df = add_moving_average_rates(case_df, 'ln(case rate)', -np.inf)
     case_df['Confirmed case rate'] = np.exp(case_df['ln(case rate)'])
+    case_df['Confirmed'] = case_df['Confirmed case rate'] * case_df['population']
     
     death_df = drop_lagged_reports_by_location(full_df.copy(), 'Deaths')
     death_df['day0'] = death_df.groupby('location_id', as_index=False)['Date'].transform(min)
@@ -555,5 +545,6 @@ def get_smoothed(full_df: pd.DataFrame):
     death_df['ln(death rate)'] = np.log(death_df['Death rate'])
     death_df = add_moving_average_rates(death_df, 'ln(death rate)', -np.inf)
     death_df['Death rate'] = np.exp(death_df['ln(death rate)'])
+    death_df['Deaths'] = death_df['Death rate'] * death_df['population']
     
     return case_df, death_df

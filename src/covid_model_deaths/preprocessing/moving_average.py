@@ -26,33 +26,26 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
     required_columns = [COLUMNS.date, measure]
     data = data.loc[:, required_columns].set_index(COLUMNS.date).loc[:, measure]
 
-    if len(data) < 6:
-    #if len(data) < window:
+    if len(data) < window:
         return data
+    
+    # extend first two/last two diffs
+    #data = np.exp(data)
+    pre = data[0] - np.diff(data[:window]).mean()
+    pre = pd.Series(pre, [data.index.min() - pd.Timedelta(days=1)], name=measure)
+    pre.index.name = COLUMNS.date
+    post = data[len(data)-1] + np.diff(data[len(data)-window:]).mean()
+    post = pd.Series(post, [data.index.max() + pd.Timedelta(days=1)], name=measure)
+    post.index.name = COLUMNS.date
+    data = pd.concat([
+        pre, data, post
+    ])
 
-    moving_average = (data
-                      .asfreq('D', method='pad')
+    moving_average = (data.asfreq('D', method='pad')
                       .rolling(window=window, min_periods=1, center=True)
                       .mean())
-
-    # dampening parameter
-    d = 0.33
-    
-    # project dampened avg last two second derivative forward at end
-    first_diff = np.diff(moving_average[-5:-1])
-    second_diff = np.diff(first_diff).mean() * d
-    last_step = first_diff[-1] + second_diff
-    # # project last derivative forward at end
-    # last_step = np.diff(moving_average[-3:-1]) # np.mean(np.diff(moving_average[-window - 1:-1]))
-    moving_average.iloc[-1] = moving_average.iloc[-2] + last_step
-
-    # project dampened avg first two second derivative backward at beginning
-    first_diff = np.diff(moving_average[1:5])
-    second_diff = np.diff(first_diff).mean() * d
-    first_step = first_diff[0] - second_diff
-    # # project first derivative forward at beginning
-    # first_step = np.diff(moving_average[1:3])  # np.mean(np.diff(moving_average[1:window + 1]))
-    moving_average.iloc[0] = moving_average.iloc[1] - first_step
+    moving_average = moving_average[1:-1]
+    #moving_average = np.log(moving_average)
     return moving_average
 
 
