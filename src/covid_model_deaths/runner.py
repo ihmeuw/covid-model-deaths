@@ -456,7 +456,6 @@ def smooth_data(output_root, file_name):
     data_dir = root / 'model_data_google_21'
 
     draw_cols = [f'draw_{d}' for d in range(1000)]
-
     model_data = pd.read_csv(root / file_name)
     model_data['date'] = pd.to_datetime(model_data['date'])
     model_data = model_data.sort_values(['location_id', 'date']).reset_index(drop=True)
@@ -483,6 +482,7 @@ def smooth_data(output_root, file_name):
     delta_smoothed = smoothed_data['deaths'].values[1:] - smoothed_data['deaths'].values[:-1]
     delta_smoothed = delta_smoothed[~first_day_smoothed.values[1:]]
     smoothed_data.loc[~first_day_smoothed, 'deaths'] = delta_smoothed
+    smoothed_data = smoothed_data.loc[smoothed_data.location_id.isin(last_observed.index)]
     smoothed_data = smoothed_data.set_index('location_id').sort_index()
     last_observed = last_observed.loc[smoothed_data.index].sort_index()
     smoothed_observed = smoothed_data[smoothed_data['date'] <= last_observed].reset_index()
