@@ -83,11 +83,7 @@ class LeadingIndicator:
         df = df.sort_values('Date').reset_index(drop=True)
         df = self._to_daily(df, 'Testing rate', 'Daily testing rate')
         df = self._to_daily(df, 'Confirmed case rate', 'Daily case rate')
-        # df['Daily testing rate'] = np.nan
-        # df['Daily testing rate'][1:] = df['Testing rate'].values[1:] - df['Testing rate'].values[:-1]
-        # df['Daily case rate'] = np.nan
-        # df['Daily case rate'][1:] = df['Confirmed case rate'].values[1:] - df['Confirmed case rate'].values[:-1]
-
+        
         # keep last 8 days, get avg daily cases and testing from 8-10, then just keep 8
         future_df = df.loc[df['Date'] >= df['Date'].max() - pd.Timedelta(days=8)]
 
@@ -168,10 +164,10 @@ class LeadingIndicator:
         case_df = pd.concat(
             [self._control_for_testing(case_df.loc[case_df['location_id'] == l]) for l in case_df.location_id.unique()]
         )
-
+        
+        hosp_df = self.full_df.loc[~self.full_df['Hospitalizations'].isnull()]
         # do the same thing with hospitalizations (not present for all locs, so subset)
-        hosp_df = drop_lagged_reports_by_location(self.full_df.loc[~self.full_df['Hospitalizations'].isnull()],
-                                                  'Hospitalizations')
+        hosp_df = drop_lagged_reports_by_location(hosp_df, 'Hospitalizations')
         hosp_df = (hosp_df
                    .loc[hosp_df.groupby('location_id', as_index=False)['Hospitalizations'].transform(max).values > 0]
                    .reset_index(drop=True))

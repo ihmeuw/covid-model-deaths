@@ -119,13 +119,20 @@ def drop_lagged_reports_by_location(data: pd.DataFrame, measure: str) -> pd.Data
 
     """
     required_columns = [COLUMNS.location_id, COLUMNS.date, measure]
-    lagged_data = (
-        data.loc[:, required_columns]
-            .groupby(COLUMNS.location_id, as_index=False)
-            .apply(lambda x: ((x[COLUMNS.date] == x[COLUMNS.date].max())
-                              & (x[measure] <= x[measure].shift(1))))
-            .droplevel(0)
-    )
+    if len(data[COLUMNS.location_id].unique()) <= 1:
+        # Yuck. Bad pandas behavior when there aren't multiple 
+        # locations changes the layout of what is returned 
+        # from a groupby.apply
+        lagged_data = ((data[COLUMNS.date] == data[COLUMNS.date].max())
+                       & (data[measure] <= data[measure].shift(1)))
+    else:    
+        lagged_data = (
+            data.loc[:, required_columns]
+                .groupby(COLUMNS.location_id, as_index=False)
+                .apply(lambda x: ((x[COLUMNS.date] == x[COLUMNS.date].max())
+                                  & (x[measure] <= x[measure].shift(1))))
+                .droplevel(0)
+        )
     return data.loc[~lagged_data]
 
 

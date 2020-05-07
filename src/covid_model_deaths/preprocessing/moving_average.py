@@ -68,9 +68,14 @@ def expanding_moving_average_by_location(data: pd.DataFrame, measure: str, windo
 
     """
     required_columns = [COLUMNS.location_id, COLUMNS.date, measure]
-    moving_average = (
-        data.loc[:, required_columns]
-            .groupby(COLUMNS.location_id)
-            .apply(lambda x: expanding_moving_average(x, measure, window))
-    )
+    if len(data[COLUMNS.location_id].unique()) <= 1:
+        moving_average = expanding_moving_average(data, measure, window).reset_index()
+        moving_average[COLUMNS.location_id] = data[COLUMNS.location_id].unique()[0]
+        moving_average = moving_average.set_index([COLUMNS.location_id, COLUMNS.date])
+    else:
+        moving_average = (
+            data.loc[:, required_columns]
+                .groupby(COLUMNS.location_id)
+                .apply(lambda x: expanding_moving_average(x, measure, window))
+        )
     return moving_average

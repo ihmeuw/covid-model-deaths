@@ -107,6 +107,8 @@ def get_peak_date(past_draw_df, avg_df):
 class CompareModelDeaths:
     # FIXME: mutable default arg.
     def __init__(self, old_draw_path: str, new_draw_path: str, draws: List[str] = [f'draw_{i}' for i in range(1000)]):
+        self.old_name = Path(old_draw_path).parent.name
+        self.new_name = Path(new_draw_path).parent.name
         self.old_df = pd.read_csv(old_draw_path)
         self.new_df = pd.read_csv(new_draw_path)
         self.draws = draws
@@ -167,17 +169,6 @@ class CompareModelDeaths:
                 fig, ax = plt.subplots(1, 2, figsize=(16.5, 8.5))
                 # cumulative
                 ax[0].fill_between(
-                    old_df.loc[old_df['location'] == location, 'date'],
-                    old_df.loc[old_df['location'] == location, 'val_lower'],
-                    old_df.loc[old_df['location'] == location, 'val_upper'],
-                    alpha=0.25, color='dodgerblue'
-                )
-                ax[0].plot(
-                    old_df.loc[old_df['location'] == location, 'date'],
-                    old_df.loc[old_df['location'] == location, 'val_mean'],
-                    color='dodgerblue', label='old'
-                )
-                ax[0].fill_between(
                     new_df.loc[new_df['location'] == location, 'date'],
                     new_df.loc[new_df['location'] == location, 'val_lower'],
                     new_df.loc[new_df['location'] == location, 'val_upper'],
@@ -186,24 +177,24 @@ class CompareModelDeaths:
                 ax[0].plot(
                     new_df.loc[new_df['location'] == location, 'date'],
                     new_df.loc[new_df['location'] == location, 'val_mean'],
-                    color='firebrick', label='new'
+                    color='firebrick', label=self.new_name
                 )
+                ax[0].fill_between(
+                    old_df.loc[old_df['location'] == location, 'date'],
+                    old_df.loc[old_df['location'] == location, 'val_lower'],
+                    old_df.loc[old_df['location'] == location, 'val_upper'],
+                    alpha=0.25, color='dodgerblue'
+                )
+                ax[0].plot(
+                    old_df.loc[old_df['location'] == location, 'date'],
+                    old_df.loc[old_df['location'] == location, 'val_mean'],
+                    color='dodgerblue', label=self.old_name
+                )
+                
                 ax[0].set_xlabel('Date')
                 ax[0].set_ylabel('Cumulative deaths')
 
                 # daily
-                ax[1].fill_between(
-                    old_daily_df.loc[old_daily_df['location'] == location, 'date'],
-                    old_daily_df.loc[old_daily_df['location'] == location, 'val_lower'],
-                    old_daily_df.loc[old_daily_df['location'] == location, 'val_upper'],
-                    alpha=0.25, color='dodgerblue'
-                )
-                ax[1].plot(
-                    old_daily_df.loc[old_daily_df['location'] == location, 'date'],
-                    old_daily_df.loc[old_daily_df['location'] == location, 'val_mean'],
-                    color='dodgerblue', label='old'
-                )
-
                 ax[1].fill_between(
                     new_daily_df.loc[new_daily_df['location'] == location, 'date'],
                     new_daily_df.loc[new_daily_df['location'] == location, 'val_lower'],
@@ -213,8 +204,21 @@ class CompareModelDeaths:
                 ax[1].plot(
                     new_daily_df.loc[new_daily_df['location'] == location, 'date'],
                     new_daily_df.loc[new_daily_df['location'] == location, 'val_mean'],
-                    color='firebrick', label='new'
+                    color='firebrick', label=self.new_name
                 )
+                ax[1].fill_between(
+                    old_daily_df.loc[old_daily_df['location'] == location, 'date'],
+                    old_daily_df.loc[old_daily_df['location'] == location, 'val_lower'],
+                    old_daily_df.loc[old_daily_df['location'] == location, 'val_upper'],
+                    alpha=0.25, color='dodgerblue'
+                )
+                ax[1].plot(
+                    old_daily_df.loc[old_daily_df['location'] == location, 'date'],
+                    old_daily_df.loc[old_daily_df['location'] == location, 'val_mean'],
+                    color='dodgerblue', label=self.old_name
+                )
+
+                
                 ax[1].set_xlabel('Date')
                 ax[1].set_ylabel('Daily deaths')
 

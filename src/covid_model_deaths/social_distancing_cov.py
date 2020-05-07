@@ -81,9 +81,18 @@ class SocialDistCov:
 
         # convert datetime column
         for date_col in self.closure_cols:
-            df[date_col] = df[date_col].apply(
-                lambda x: datetime.strptime(x, '%d.%m.%Y') if isinstance(x, str) and x[0].isdigit() else np.nan
-            )
+            def _coerce_date(date_string):
+                if isinstance(date_string, str) and date_string[0].isdigit():
+                    date_string = date_string.strip()
+                    try:
+                        date = datetime.strptime(date_string, '%d.%m.%Y')
+                    except ValueError:
+                        date = datetime.strptime(date_string, '%m.%d.%Y')
+                else:
+                    date = np.nan
+                return date
+            
+            df[date_col] = df[date_col].apply(_coerce_date)
 
         return df.reset_index(drop=True)
 
