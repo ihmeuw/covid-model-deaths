@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 from covid_model_deaths.globals import COLUMNS
 
@@ -87,13 +88,71 @@ def get_daily_predictions(today_data: pd.DataFrame, yesterday_data: pd.DataFrame
     return all_predicted
 
 
+def avg_within_window(data: pd.DataFrame, start_day: pd.DataFrame, end_day: pd.DataFrame) -> pd.DataFrame:
+    data = data.merge(start_day)
+    data = data.merge(end_day)
+    
+    window_start = data['date'] >= data['start_day']
+    window_end = data['date'] < data['end_day']
+    del data['start_day']
+    del data['end_day']
+    
+    data.loc[window_start & window_end, 'observed'] = False
+    
+    data = data.sort_values(['location_id', 'date']).reset_index(drop=True)
+    first_day = data['date'] == data.groupby('location_id').date.transform(min)
+    delta_draws = data[DRAW_COLUMNS].values[1:] - data[DRAW_COLUMNS].values[:-1]
+    delta_draws = delta_draws[~first_day.values[1:]]
+    data.loc[~first_day, DRAW_COLUMNS] = delta_draws
+    
+    means = data.loc[window_start & window_end, DRAW_COLUMNS].mean(axis=1).values
+    data.loc[window_start & window_end, DRAW_COLUMNS] = np.array([means]).T.repeat(len(DRAW_COLUMNS), axis=1)
+    
+    data = data.sort_values(['location_id', 'date']).reset_index(drop=True)
+    data[DRAW_COLUMNS] = data.groupby('location_id', as_index=False)[DRAW_COLUMNS].cumsum()
+    
+    return data
+    
+
+def set_past_avg_window(today_data: pd.DataFrame, yesterday_data: pd.DataFrame, 
+                        day_before_yesterday_data: pd.DataFrame, past_avg_window: int) -> pd.DataFrame:
+    """Days in past over which we will average, using mean for previous days"""
+    start_day = today_data[today_data['observed']].groupby('location_id').date.max() - pd.Timedelta(days=past_avg_window)
+    start_day = start_day.reset_index()
+    start_day = start_day.rename(index=str, columns={'date':'start_day'})
+
+    end_day = today_data[~today_data['observed']].groupby('location_id').date.min()
+    end_day = end_day.reset_index()
+    end_day = end_day.rename(index=str, columns={'date':'end_day'})
+    
+    today_data = avg_within_window(today_data, start_day, end_day)
+    yesterday_data = avg_within_window(yesterday_data, start_day, end_day)
+    day_before_yesterday_data = avg_within_window(day_before_yesterday_data, start_day, end_day)
+    
+    return today_data, yesterday_data, day_before_yesterday_data, end_day
+
+
+def reset_observed(data: pd.DataFrame, end_day: pd.DataFrame):
+    data = data.merge(end_day)
+    
+    window_end = data['date'] < data['end_day']
+    del data['end_day']
+    data.loc[window_end, 'observed'] = True
+    return data
+
+
 def moving_average_predictions(today_data_path: str, yesterday_data_path: str,
-                               day_before_yesterday_path: str) -> pd.DataFrame:
+                               day_before_yesterday_path: str,
+                               past_avg_window: int) -> pd.DataFrame:
     """Average the predictions for recent 3 runs."""
     print("Averaging over the following files: ", [today_data_path, yesterday_data_path, day_before_yesterday_path])
     today_data = load_data(today_data_path)
     yesterday_data = load_data(yesterday_data_path)
     day_before_yesterday_data = load_data(day_before_yesterday_path)
+    
+    today_data, yesterday_data, day_before_yesterday_data, end_day = set_past_avg_window(
+        today_data, yesterday_data, day_before_yesterday_data, past_avg_window
+    )
 
     observed_data = get_daily_observed(today_data)
     all_predicted = get_daily_predictions(today_data, yesterday_data, day_before_yesterday_data)
@@ -103,4 +162,7 @@ def moving_average_predictions(today_data_path: str, yesterday_data_path: str,
                   .apply(lambda x: x.set_index(['location_id', 'location', 'date', 'observed']).cumsum())
                   .reset_index()
                   .drop(columns='level_0'))
+    
+    cumulative = reset_observed(cumulative, end_day)
+    
     return cumulative

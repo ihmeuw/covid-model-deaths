@@ -46,8 +46,8 @@ def compute_backcast_log_age_specific_death_rates(df: pd.DataFrame, age_pop_df: 
     sort_columns = [COLUMNS.location_id, COLUMNS.country, COLUMNS.location, COLUMNS.date]
     df = df.sort_values(sort_columns).reset_index(drop=True)
 
-    df = drop_lagged_deaths_by_location(df)
-    df = add_moving_average_ln_asdr(df, rate_threshold)
+    df = drop_lagged_reports_by_location(df, COLUMNS.deaths)
+    df = add_moving_average_rates(df, COLUMNS.ln_age_death_rate, rate_threshold)
     df = add_days_since_last_day_of_two_deaths(df)
 
     # interpolate back to threshold
@@ -103,40 +103,46 @@ def get_asdr(true_rate, implied_rate, age_pattern_df: pd.DataFrame):
     return (scaled_rate * age_pattern_df['age_group_weight_value']).sum()
 
 
-def drop_lagged_deaths_by_location(data: pd.DataFrame) -> pd.DataFrame:
-    """Drop rows from data where no new deaths occurred on the current day.
+def drop_lagged_reports_by_location(data: pd.DataFrame, measure: str) -> pd.DataFrame:
+    """Drop rows from data where no new values reported on the current day.
 
     Parameters
     ----------
     data
-        The dataset containing lagged deaths.
+        The dataset containing lagged data.
+    measure
+        Count column we are checking.
 
     Returns
     -------
-        The same dataset with rows containing lagged deaths removed.
+        The same dataset with rows containing lagged data removed.
 
     """
-    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.deaths]
-    lagged_deaths = (
+    required_columns = [COLUMNS.location_id, COLUMNS.date, measure]
+    lagged_data = (
         data.loc[:, required_columns]
             .groupby(COLUMNS.location_id, as_index=False)
             .apply(lambda x: ((x[COLUMNS.date] == x[COLUMNS.date].max())
-                              & (x[COLUMNS.deaths] == x[COLUMNS.deaths].shift(1))))
+                              & (x[measure] <= x[measure].shift(1))))
             .droplevel(0)
     )
-    return data.loc[~lagged_deaths]
+    return data.loc[~lagged_data]
 
 
-def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float, n_smooths: int = 10) -> pd.DataFrame:
+def add_moving_average_rates(data: pd.DataFrame, measure: str, rate_threshold: float, n_smooths: int = 10) -> pd.DataFrame:
     """Smooths over the log age specific death rate.
 
     Parameters
     ----------
     data
         The data with the age specific death rate to smooth over.
+    measure
+        Rate column we are smoothing.
     rate_threshold
         The minimum age specific death rate.  Values produced in the
         averaging will be pinned to this.
+    n_smooths
+        Number of smoothing iterations.
 
     Returns
     -------
@@ -144,16 +150,17 @@ def add_moving_average_ln_asdr(data: pd.DataFrame, rate_threshold: float, n_smoo
         column with the original observed asdr.
 
     """
-    required_columns = [COLUMNS.location_id, COLUMNS.date, COLUMNS.days, COLUMNS.ln_age_death_rate]
+    required_columns = [COLUMNS.location_id, COLUMNS.date, measure]
     assert set(required_columns).issubset(data.columns)
-    data[COLUMNS.obs_ln_age_death_rate] = data[COLUMNS.ln_age_death_rate]
+    data[f'Observed {measure}'] = data[measure]
     # smooth n times
     for i in range(n_smooths):
-        moving_average = expanding_moving_average_by_location(data, COLUMNS.ln_age_death_rate)
+        moving_average = expanding_moving_average_by_location(data, measure)
         # noinspection PyTypeChecker
         moving_average[moving_average < rate_threshold] = rate_threshold
         data = data.set_index([COLUMNS.location_id, COLUMNS.date])
-        data = (pd.concat([data.drop(columns=COLUMNS.ln_age_death_rate), moving_average], axis=1)
+        
+        data = (pd.concat([data.drop(columns=measure), moving_average], axis=1)
                 .fillna(method='pad')
                 .reset_index())
 

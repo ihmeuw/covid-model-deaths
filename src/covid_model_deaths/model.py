@@ -22,7 +22,7 @@ RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
 PSEUDO_SE = 3
-N_B = 29
+N_B = 43
 PRED_DAYS = 150
 
 
@@ -371,7 +371,7 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     }
 
     # prepare data (must exponentiate smoothed column, non-logged col is not smoothed)
-    df['obs_se'] = 1 / (1 + df['days'])
+    df['obs_se'] = 1 / (1 + df['days']**0.6)
     df.loc[df['pseudo'] == 1, 'obs_se'] = PSEUDO_SE
     df['Age-standardized death rate'] = np.exp(df['ln(age-standardized death rate)'])
     df = process_input(df, 'location_id', 'days', 'Age-standardized death rate',
@@ -437,7 +437,8 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     return model, cumulative_draws
 
 
-def plot_location(location, location_name, covariate_val, tm, lm, model_instance, draw, population, pdf=None, pred_days=PRED_DAYS):
+def plot_location(location, location_name, covariate_val, tm, lm, 
+                  model_instance, draw, population, pdf=None, pred_days=PRED_DAYS):
     # get past curve point estimates
     tight_curve_t = np.arange(pred_days)
     tight_curve = tm.predict(tight_curve_t, group_name=location)
@@ -522,13 +523,13 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 
 def run_death_models():
     # args = argparse.Namespace(
-    #     cov_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373_covariate.csv', 
+    #     cov_file='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/model_data_descartes_21/555_covariate.csv', 
     #     covariate_effect='gamma', 
-    #     data_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373.csv', 
-    #     last_day_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/last_day.csv', 
-    #     model_location_id=60373, 
+    #     data_file='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/model_data_descartes_21/555.csv', 
+    #     last_day_file='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/last_day.csv', 
+    #     model_location_id=555, 
     #     n_draws=333, 
-    #     output_dir='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373', 
+    #     output_dir='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/model_data_descartes_21/555', 
     #     peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv'
     # )
     parser = argparse.ArgumentParser()
