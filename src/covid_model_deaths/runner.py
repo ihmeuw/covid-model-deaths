@@ -129,7 +129,7 @@ def make_leading_indicator(full_df: pd.DataFrame, data_version: str = 'best') ->
     return dcr_df, dhr_df, li_df
 
 
-def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
+def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                   age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, li_df: pd.DataFrame,
                   loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str,
                   snapshot_version: str, model_inputs_version: str, r0_file: str, 
@@ -162,13 +162,13 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
 
         # tack on deaths from cases if in dataset
         # South Dakota, Iowa
-        if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538]:
+        if location_id in mod_df[COLUMNS.location_id].tolist() and location_id not in [564, 538]:
             # get future days
-            last_date = full_df.loc[full_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
+            last_date = mod_df.loc[mod_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
             loc_cd_df = li_df.loc[(li_df[COLUMNS.location_id] == location_id)
                                   & (li_df[COLUMNS.date] > last_date)].reset_index(drop=True)
-            loc_cd_df[COLUMNS.population] = full_df.loc[full_df[COLUMNS.location_id] == location_id,
-                                                        COLUMNS.population].max()  # all the same...
+            loc_cd_df[COLUMNS.population] = mod_df.loc[mod_df[COLUMNS.location_id] == location_id,
+                                                       COLUMNS.population].max()  # all the same...
             loc_cd_df[COLUMNS.pseudo] = 1
 
             if not loc_cd_df.empty:
