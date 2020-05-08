@@ -133,7 +133,7 @@ def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                   age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, li_df: pd.DataFrame,
                   loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str,
                   snapshot_version: str, model_inputs_version: str, r0_file: str, 
-                  code_dir: str, verbose: bool = False) -> Dict:
+                  code_dir: str, no_pseudo: List[int], verbose: bool = False) -> Dict:
     submodel_dict = {}
     N = len(loc_df)
     i = 0
@@ -161,8 +161,7 @@ def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
         mod_df[COLUMNS.pseudo] = 0
 
         # tack on deaths from cases if in dataset
-        # South Dakota, Iowa
-        if location_id in mod_df[COLUMNS.location_id].tolist() and location_id not in [564, 538]:
+        if location_id in mod_df[COLUMNS.location_id].tolist() and location_id not in no_pseudo:
             # get future days
             last_date = mod_df.loc[mod_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
             loc_cd_df = li_df.loc[(li_df[COLUMNS.location_id] == location_id)
