@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -20,12 +21,15 @@ class CompareAveragingModelDeaths:
     def __init__(self, raw_draw_path: str, average_draw_path: str,
                  yesterday_draw_path: str, before_yesterday_draw_path: str,
                  draws: List[str] = [f'draw_{i}' for i in range(1000)]):
+        self.old_name = Path(raw_draw_path).parent.name
         self.old_df = pd.read_csv(raw_draw_path)
         self.old_df = fill_draw(self.old_df)
         self.new_df = pd.read_csv(average_draw_path)
         self.new_df = fill_draw(self.new_df)
+        self.yesterday_name = Path(yesterday_draw_path).parent.name
         self.yesterday_df = pd.read_csv(yesterday_draw_path)
         self.yesterday_df = fill_draw(self.yesterday_df)
+        self.before_yesterday_name = Path(before_yesterday_draw_path).parent.name
         self.before_yesterday_df = pd.read_csv(before_yesterday_draw_path)
         self.before_yesterday_df = fill_draw(self.before_yesterday_df)
         self.draws = draws
@@ -105,7 +109,7 @@ class CompareAveragingModelDeaths:
                 ax[0].plot(
                     old_df.loc[old_df['location'] == location, 'date'],
                     old_df.loc[old_df['location'] == location, 'val_mean'],
-                    color='dodgerblue', label="Today's Run"
+                    color='dodgerblue', label=self.old_name
                 )
                 ax[0].fill_between(
                     new_df.loc[new_df['location'] == location, 'date'],
@@ -128,7 +132,7 @@ class CompareAveragingModelDeaths:
                 ax[0].plot(
                     yesterday_df.loc[yesterday_df['location'] == location, 'date'],
                     yesterday_df.loc[yesterday_df['location'] == location, 'val_mean'],
-                    color='limegreen', label='Last Run'
+                    color='limegreen', label=self.yesterday_name
                 )
 
                 ax[0].fill_between(
@@ -140,7 +144,7 @@ class CompareAveragingModelDeaths:
                 ax[0].plot(
                     before_yesterday_df.loc[before_yesterday_df['location'] == location, 'date'],
                     before_yesterday_df.loc[before_yesterday_df['location'] == location, 'val_mean'],
-                    color='khaki', label='Before Last Run'
+                    color='khaki', label=self.before_yesterday_name
                 )
 
                 ax[0].set_xlabel('Date')
@@ -156,7 +160,7 @@ class CompareAveragingModelDeaths:
                 ax[1].plot(
                     old_daily_df.loc[old_daily_df['location'] == location, 'date'],
                     old_daily_df.loc[old_daily_df['location'] == location, 'val_mean'],
-                    color='dodgerblue', label="Today's Run"
+                    color='dodgerblue', label=self.old_name
                 )
 
                 ax[1].fill_between(
@@ -180,7 +184,7 @@ class CompareAveragingModelDeaths:
                 ax[1].plot(
                     yesterday_daily_df.loc[yesterday_daily_df['location'] == location, 'date'],
                     yesterday_daily_df.loc[yesterday_daily_df['location'] == location, 'val_mean'],
-                    color='limegreen', label='Last Run'
+                    color='limegreen', label=self.yesterday_name
                 )
 
                 ax[1].fill_between(
@@ -192,7 +196,7 @@ class CompareAveragingModelDeaths:
                 ax[1].plot(
                     before_yesterday_daily_df.loc[before_yesterday_daily_df['location'] == location, 'date'],
                     before_yesterday_daily_df.loc[before_yesterday_daily_df['location'] == location, 'val_mean'],
-                    color='khaki', label='Before Last Run'
+                    color='khaki', label=self.before_yesterday_name
                 )
 
                 if peak_date is not None:

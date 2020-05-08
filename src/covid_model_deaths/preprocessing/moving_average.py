@@ -28,19 +28,24 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
 
     if len(data) < window:
         return data
+    
+    # extend first two/last two diffs
+    #data = np.exp(data)
+    pre = data[0] - np.diff(data[:window]).mean()
+    pre = pd.Series(pre, [data.index.min() - pd.Timedelta(days=1)], name=measure)
+    pre.index.name = COLUMNS.date
+    post = data[len(data)-1] + np.diff(data[len(data)-window:]).mean()
+    post = pd.Series(post, [data.index.max() + pd.Timedelta(days=1)], name=measure)
+    post.index.name = COLUMNS.date
+    data = pd.concat([
+        pre, data, post
+    ])
 
-    moving_average = (data
-                      .asfreq('D', method='pad')
+    moving_average = (data.asfreq('D', method='pad')
                       .rolling(window=window, min_periods=1, center=True)
                       .mean())
-    if len(moving_average) > window:
-        # replace last point w/ daily value over 3->2 and 2->1 and the first
-        # with 1->2, 2->3; use observed if 3 data points or less
-        last_step = np.mean(np.array(moving_average[-window:-1]) - np.array(moving_average[-window - 1:-2]))
-        moving_average.iloc[-1] = moving_average.iloc[-2] + last_step
-
-        first_step = np.mean(np.array(moving_average[2:window + 1]) - np.array(moving_average[1:window]))
-        moving_average.iloc[0] = moving_average.iloc[1] - first_step
+    moving_average = moving_average[1:-1]
+    #moving_average = np.log(moving_average)
     return moving_average
 
 
@@ -63,9 +68,14 @@ def expanding_moving_average_by_location(data: pd.DataFrame, measure: str, windo
 
     """
     required_columns = [COLUMNS.location_id, COLUMNS.date, measure]
-    moving_average = (
-        data.loc[:, required_columns]
-            .groupby(COLUMNS.location_id)
-            .apply(lambda x: expanding_moving_average(x, measure, window))
-    )
+    if len(data[COLUMNS.location_id].unique()) <= 1:
+        moving_average = expanding_moving_average(data, measure, window).reset_index()
+        moving_average[COLUMNS.location_id] = data[COLUMNS.location_id].unique()[0]
+        moving_average = moving_average.set_index([COLUMNS.location_id, COLUMNS.date])
+    else:
+        moving_average = (
+            data.loc[:, required_columns]
+                .groupby(COLUMNS.location_id)
+                .apply(lambda x: expanding_moving_average(x, measure, window))
+        )
     return moving_average

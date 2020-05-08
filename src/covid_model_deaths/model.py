@@ -22,8 +22,21 @@ RATE_THRESHOLD = -15  # should pass this in as argument
 COVARIATE = 'cov_3w'
 DATA_THRESHOLD = 18
 PSEUDO_SE = 3
-N_B = 29
+
+# Ryan is being clever.  This is a number of "elements" or 
+# basis functions in the mixture used to do the fit.
+ATOMS_COPPER = 29
+ATOMS_TECHNETIUM = 43
+
 PRED_DAYS = 150
+
+
+def get_number_of_basis_functions(location_cov):
+    sd_cov_cutoff = 1.3
+    if location_cov < sd_cov_cutoff:
+        return ATOMS_TECHNETIUM
+    else:
+        return ATOMS_COPPER
 
 
 def get_hash(key: str) -> int:
@@ -294,7 +307,7 @@ def ap_model(df, model_location, location_cov, n_draws,
 
 
 def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_groups,
-                       fix_point, fix_day, pred_days=PRED_DAYS):
+                       fix_point, fix_day, pred_days=PRED_DAYS, n_b=ATOMS_TECHNETIUM):
     # our dataset (rename days as model assumes it's lower case)
     df = df.copy()
     df = df.rename(index=str, columns={'Days':'days'})
@@ -371,14 +384,14 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     }
 
     # prepare data (must exponentiate smoothed column, non-logged col is not smoothed)
-    df['obs_se'] = 1 / (1 + df['days'])
+    df['obs_se'] = 1 / (1 + df['days']**0.6)
     df.loc[df['pseudo'] == 1, 'obs_se'] = PSEUDO_SE
     df['Age-standardized death rate'] = np.exp(df['ln(age-standardized death rate)'])
     df = process_input(df, 'location_id', 'days', 'Age-standardized death rate',
                        col_covs=[COVARIATE, 'intercept', 'obs_se'])
 
     # set bounds on Gaussian mixture weights
-    gm_bounds = np.repeat(np.array([[0, 2.]]), N_B, axis=0)
+    gm_bounds = np.repeat(np.array([[0, 2.]]), n_b, axis=0)
     gm_bounds = np.vstack([gm_bounds, [[0, 6.]]])  # add bounds on sum of weights
     gm_fit_dict = {
         'bounds': gm_bounds
@@ -390,7 +403,7 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     # The Alpha Prior Model (flat asymmetric module)
     model = APFlatAsymmetricModel(
         beta_stride=2,
-        mixture_size=N_B,
+        mixture_size=n_b,
         daily_col='asddr',
         gm_fit_threshold=DATA_THRESHOLD,
         gm_fit_dict=gm_fit_dict,
@@ -437,7 +450,9 @@ def ap_flat_asym_model(df, model_location, n_draws, peaked_groups, exclude_group
     return model, cumulative_draws
 
 
-def plot_location(location, location_name, covariate_val, tm, lm, model_instance, draw, population, pdf=None, pred_days=PRED_DAYS):
+def plot_location(location, location_name, covariate_val, tm, lm, 
+                  model_instance, draw, population, pdf=None, pred_days=PRED_DAYS, 
+                  n_b=ATOMS_TECHNETIUM):
     # get past curve point estimates
     tight_curve_t = np.arange(pred_days)
     tight_curve = tm.predict(tight_curve_t, group_name=location)
@@ -512,7 +527,7 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
     ax[1, 1].set_xlim(0, draw[0].max())
     ax[1, 1].set_xlabel('days')
 
-    plt.suptitle(f'{location_name} - SD cov: {np.round(covariate_val, 2)}', y=1.00025)
+    plt.suptitle(f'{location_name} - n_b: {n_b} - SD cov: {np.round(covariate_val, 2)}', y=1.00025)
     plt.tight_layout()
     if pdf is not None:
         pdf.savefig(fig)
@@ -522,13 +537,14 @@ def plot_location(location, location_name, covariate_val, tm, lm, model_instance
 
 def run_death_models():
     # args = argparse.Namespace(
-    #     cov_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373_covariate.csv', 
+    #     cov_file='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/model_data_descartes_21/555_covariate.csv', 
     #     covariate_effect='gamma', 
-    #     data_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373.csv', 
-    #     last_day_file='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/last_day.csv', 
-    #     model_location_id=60373, 
-    #     n_draws=333, 
-    #     output_dir='/ihme/covid-19/deaths/dev/2020_05_01_Europe_debug/model_data_descartes_21/60373', 
+    #     data_file='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/model_data_descartes_21/555.csv', 
+    #     last_day_file='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/last_day.csv', 
+    #     model_location_id=555, 
+    #     n_draws=333,
+    #     n_b=43,
+    #     output_dir='/ihme/covid-19/deaths/dev/2020_05_03_US_boundary/model_data_descartes_21/555', 
     #     peaked_file='/ihme/covid-19/deaths/mobility_inputs/2020_04_20/peak_locs_april20_.csv'
     # )
     parser = argparse.ArgumentParser()
@@ -587,6 +603,7 @@ def run_death_models():
     # identify covariate value for our location
     location_cov = cov_df.loc[cov_df['location_id'] == args.model_location_id,
                               COVARIATE].item()
+    n_b = get_number_of_basis_functions(location_cov)
 
     # get list of peaked locations
     peaked_df = pd.read_csv(args.peaked_file)
@@ -666,7 +683,8 @@ def run_death_models():
             peaked_groups=peaked_df.loc[peaked_df['location_id'].isin(df['location_id'].unique().tolist()), 'location_id'].to_list(),
             exclude_groups=peaked_df.loc[peaked_df['Location'].str.startswith('Wuhan'), 'location_id'].unique().tolist(),
             fix_point=fix_point,
-            fix_day=fix_day
+            fix_day=fix_day,
+            n_b=n_b
         )
         loose_model = tight_model  # just to plug into plot
         model = 'AP flat asymmetrical'
@@ -735,7 +753,8 @@ def run_death_models():
                           model_instance=model_instance,
                           draw=draws[location],
                           population=df.loc[df['location_id'] == location, 'population'].values[0],
-                          pdf=pdf)
+                          pdf=pdf,
+                          n_b=n_b)
 
 
 if __name__ == '__main__':

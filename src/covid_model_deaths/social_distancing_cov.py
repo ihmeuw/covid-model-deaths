@@ -34,14 +34,15 @@ class SocialDistCov:
                     'Any Business Closures']
     closure_level_idx = [0, 1, 2, 4]
 
-    def __init__(self, death_df: pd.DataFrame, date_df: pd.DataFrame = None, data_version: str = 'best'):
+    def __init__(self, death_df: pd.DataFrame, date_df: pd.DataFrame = None, 
+                 snapshot_version: str = 'best', model_inputs_version: str = 'best'):
         # read in and format closure data
         # TODO: Move to etl
-        self.closure_sheet = f'/ihme/covid-19/model-inputs/{data_version}/closure_criteria_sheet.xlsx'
+        self.closure_sheet = f'/ihme/covid-19/model-inputs/{model_inputs_version}/closure_criteria_sheet.xlsx'
         self.closure_df = self._process_closure_dataset()
         
         # get "voluntary closure" locations
-        self.mobility_sheet = f'/ihme/covid-19/snapshot-data/{data_version}/covid_onedrive'\
+        self.mobility_sheet = f'/ihme/covid-19/snapshot-data/{snapshot_version}/covid_onedrive'\
                               '/Decrees for Closures/Google/google_mobility_with_locs.csv'
         self.vol_locs = self._capture_voluntary_mobility()
 
@@ -80,9 +81,18 @@ class SocialDistCov:
 
         # convert datetime column
         for date_col in self.closure_cols:
-            df[date_col] = df[date_col].apply(
-                lambda x: datetime.strptime(x, '%d.%m.%Y') if isinstance(x, str) and x[0].isdigit() else np.nan
-            )
+            def _coerce_date(date_string):
+                if isinstance(date_string, str) and date_string[0].isdigit():
+                    date_string = date_string.strip()
+                    try:
+                        date = datetime.strptime(date_string, '%d.%m.%Y')
+                    except ValueError:
+                        date = datetime.strptime(date_string, '%m.%d.%Y')
+                else:
+                    date = np.nan
+                return date
+            
+            df[date_col] = df[date_col].apply(_coerce_date)
 
         return df.reset_index(drop=True)
 
@@ -100,10 +110,9 @@ class SocialDistCov:
         df = df[['location_id', 'Location', 'Country/Region', 'threshold_date']].reset_index(drop=True)
         if date_df is not None:
             df = df.append(
-                date_df.loc[~date_df['Location'].isin(df['Location'].unique().tolist()),
+                date_df.loc[~date_df['location_id'].isin(df['location_id'].unique().tolist()),
                             ['location_id', 'Location', 'Country/Region', 'threshold_date']]
             ).reset_index(drop=True)
-
         return df
     
     def _capture_voluntary_mobility(self, 

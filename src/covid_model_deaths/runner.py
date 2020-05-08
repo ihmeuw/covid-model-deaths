@@ -13,7 +13,8 @@ import pandas as pd
 import tqdm
 
 from covid_model_deaths.compare_model_average import CompareAveragingModelDeaths
-from covid_model_deaths.data import compute_backcast_log_age_specific_death_rates
+from covid_model_deaths.data import (compute_backcast_log_age_specific_death_rates,
+                                     drop_lagged_reports_by_location, add_moving_average_rates)
 from covid_model_deaths.drawer import Drawer
 from covid_model_deaths.impute_death_threshold import impute_death_threshold as impute_death_threshold_
 from covid_model_deaths.leading_indicator import LeadingIndicator
@@ -22,7 +23,6 @@ from covid_model_deaths.globals import COLUMNS, LOCATIONS
 from covid_model_deaths.model_average import moving_average_predictions
 from covid_model_deaths.social_distancing_cov import SocialDistCov
 from covid_model_deaths.utilities import submit_curvefit, CompareModelDeaths
-
 
 
 def make_cases_and_backcast_deaths(full_df: pd.DataFrame, death_df: pd.DataFrame,
@@ -123,16 +123,17 @@ def make_last_day_df(full_df: pd.DataFrame, date_mean_df: pd.DataFrame) -> pd.Da
     return last_day_df[[COLUMNS.location_id, COLUMNS.ln_death_rate, COLUMNS.days]]
 
 
-def make_leading_indicator(full_df: pd.DataFrame) -> pd.DataFrame:
-    leading = LeadingIndicator(full_df)
+def make_leading_indicator(full_df: pd.DataFrame, data_version: str = 'best') -> pd.DataFrame:
+    leading = LeadingIndicator(full_df, data_version)
     dcr_df, dhr_df, li_df = leading.produce_deaths()
     return dcr_df, dhr_df, li_df
 
 
-def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
+def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                   age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, li_df: pd.DataFrame,
                   loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str,
-                  data_version: str, r0_file: str, code_dir: str, verbose: bool = False) -> Dict:
+                  snapshot_version: str, model_inputs_version: str, r0_file: str, 
+                  code_dir: str, no_pseudo: List[int], verbose: bool = False) -> Dict:
     submodel_dict = {}
     N = len(loc_df)
     i = 0
@@ -160,14 +161,13 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
         mod_df[COLUMNS.pseudo] = 0
 
         # tack on deaths from cases if in dataset
-        # South Dakota, Iowa, France
-        if location_id in full_df[COLUMNS.location_id].tolist() and location_id not in [564, 538, 80]:
+        if location_id in mod_df[COLUMNS.location_id].tolist() and location_id not in no_pseudo:
             # get future days
-            last_date = full_df.loc[full_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
+            last_date = mod_df.loc[mod_df[COLUMNS.location_id] == location_id, COLUMNS.date].max()
             loc_cd_df = li_df.loc[(li_df[COLUMNS.location_id] == location_id)
                                   & (li_df[COLUMNS.date] > last_date)].reset_index(drop=True)
-            loc_cd_df[COLUMNS.population] = full_df.loc[full_df[COLUMNS.location_id] == location_id,
-                                                        COLUMNS.population].max()  # all the same...
+            loc_cd_df[COLUMNS.population] = mod_df.loc[mod_df[COLUMNS.location_id] == location_id,
+                                                       COLUMNS.population].max()  # all the same...
             loc_cd_df[COLUMNS.pseudo] = 1
 
             if not loc_cd_df.empty:
@@ -218,7 +218,8 @@ def submit_models(full_df: pd.DataFrame, death_df: pd.DataFrame, age_pop_df: pd.
                 # drop back-cast for modeling file, but NOT for the social distancing covariate step
                 model_out_dir = f'{output_directory}/model_data_{cov_source}_{k}'
                 mod_df.to_csv(f'{model_out_dir}/{location_id}.csv', index=False)
-                sd_cov = SocialDistCov(mod_df, date_mean_df, data_version=data_version)
+                sd_cov = SocialDistCov(mod_df, date_mean_df, 
+                                       snapshot_version=snapshot_version, model_inputs_version=model_inputs_version)
                 if cov_source in cmd_globals.MOBILITY_SOURCES:
                     sd_cov_df = sd_cov.get_cov_df(weights=[None], k=k, empirical_weight_source=cov_source)
                 else:
@@ -291,11 +292,13 @@ def compile_draws(loc_df: pd.DataFrame, submodel_dict: Dict,
 
 
 def average_draws(raw_draw_path: str,
-                  yesterday_path: str, before_yesterday_path: str) -> pd.DataFrame:
+                  yesterday_path: str, before_yesterday_path: str,
+                  past_avg_window: int) -> pd.DataFrame:
     avg_df = moving_average_predictions(
         today_data_path=raw_draw_path,
         yesterday_data_path=yesterday_path,
-        day_before_yesterday_path=before_yesterday_path
+        day_before_yesterday_path=before_yesterday_path,
+        past_avg_window=past_avg_window
     )
     avg_df['date'] = pd.to_datetime(avg_df['date'])
     return avg_df
@@ -411,9 +414,6 @@ def get_backcast_location_ids(data: pd.DataFrame, most_detailed: bool = True) ->
     return location_ids
 
 
-
-
-
 def date_mean(dates: pd.Series) -> datetime:
     dt_min = dates.min()
     deltas = pd.Series([x-dt_min for x in dates])
@@ -451,11 +451,11 @@ def display_total_deaths(draw_df: pd.DataFrame):
 
 # FIXME: This is a hacked together thing that needs some love before it goes in a real
 #  production run.
-def smooth_data(output_root, file_name):
+def swap_observed(output_root: str, file_name: str, new_file_name: str, new_past_df: pd.DataFrame):
     root = Path(output_root)
-    data_dir = root / 'model_data_google_21'
 
     draw_cols = [f'draw_{d}' for d in range(1000)]
+
     model_data = pd.read_csv(root / file_name)
     model_data['date'] = pd.to_datetime(model_data['date'])
     model_data = model_data.sort_values(['location_id', 'date']).reset_index(drop=True)
@@ -466,36 +466,29 @@ def smooth_data(output_root, file_name):
     last_observed = model_data[model_data.observed].groupby('location_id').date.max()
     predicted = model_data[~model_data.observed]
     predicted = predicted.set_index(['location_id', 'location', 'date', 'observed'])
-    dfs = []
-    for p in data_dir.iterdir():
-        if p.suffix == '.csv' and 'covariate' not in p.name:
-            df = pd.read_csv(p)
-            df = df[df.location_id == int(p.stem)]
-            dfs.append(df)
-    smoothed_data = pd.concat(dfs)
-    smoothed_data = (smoothed_data[['location_id', 'Location', 'Date', 'ln(age-standardized death rate)', 'population']]
-                     .rename(columns={'Location': 'location', 'Date': 'date'}))
-    smoothed_data['deaths'] = np.exp(smoothed_data['ln(age-standardized death rate)']) * smoothed_data['population']
-    smoothed_data['date'] = pd.to_datetime(smoothed_data['date'])
-    smoothed_data = smoothed_data.sort_values(['location_id', 'date']).reset_index(drop=True)
-    first_day_smoothed = smoothed_data['date'] == smoothed_data.groupby('location_id').date.transform(min)
-    delta_smoothed = smoothed_data['deaths'].values[1:] - smoothed_data['deaths'].values[:-1]
-    delta_smoothed = delta_smoothed[~first_day_smoothed.values[1:]]
-    smoothed_data.loc[~first_day_smoothed, 'deaths'] = delta_smoothed
-    smoothed_data = smoothed_data.loc[smoothed_data.location_id.isin(last_observed.index)]
-    smoothed_data = smoothed_data.set_index('location_id').sort_index()
-    last_observed = last_observed.loc[smoothed_data.index].sort_index()
-    smoothed_observed = smoothed_data[smoothed_data['date'] <= last_observed].reset_index()
-    smoothed_observed['observed'] = False
-    smoothed_observed = (smoothed_observed[['location_id', 'location', 'date', 'observed', 'deaths']]
-                         .set_index(['location_id', 'location', 'date', 'observed']))
+    new_past_df = (new_past_df[['location_id', 'Location', 'Date', 'Deaths', 'population']]
+                     .rename(columns={'Location': 'location', 'Date': 'date', 'Deaths': 'deaths'}))
+    #new_past_df['deaths'] = np.exp(new_past_df['ln(age-standardized death rate)']) * new_past_df['population']
+    new_past_df['date'] = pd.to_datetime(new_past_df['date'])
+    new_past_df = new_past_df.sort_values(['location_id', 'date']).reset_index(drop=True)
+    first_day_past = new_past_df['date'] == new_past_df.groupby('location_id').date.transform(min)
+    delta_past = new_past_df['deaths'].values[1:] - new_past_df['deaths'].values[:-1]
+    delta_past = delta_past[~first_day_past.values[1:]]
+    new_past_df.loc[~first_day_past, 'deaths'] = delta_past
+    new_past_df = new_past_df.set_index('location_id').sort_index()
+    last_observed = last_observed.loc[new_past_df.index].sort_index()
+    new_past_df = new_past_df[new_past_df['date'] <= last_observed].reset_index()
+    #smoothed_observed['observed'] = False
+    new_past_df['observed'] = True
+    new_past_df = (new_past_df[['location_id', 'location', 'date', 'observed', 'deaths']]
+                   .set_index(['location_id', 'location', 'date', 'observed']))
 
     for i in range(1000):
-        smoothed_observed[f'draw_{i}'] = smoothed_observed['deaths']
+        new_past_df[f'draw_{i}'] = new_past_df['deaths']
 
-    out = pd.concat([smoothed_observed.drop(columns='deaths'), predicted]).sort_index().reset_index()
+    out = pd.concat([new_past_df.drop(columns='deaths'), predicted]).sort_index().reset_index()
     out[draw_cols] = out.groupby('location_id')[draw_cols].cumsum()
-    out.to_csv(root / ('smoothed_' + file_name.split('/')[-1]), index=False)
+    out.to_csv(root / new_file_name, index=False)
 
 
 def get_peak_from_model(location_id, submodel_dirs):
@@ -532,3 +525,27 @@ def save_points_and_peaks(loc_df: pd.DataFrame, submodel_dict: dict,
     peak_dates_df = peak_dates_df[['location_id', 'Date', 'Daily death rate']].reset_index(drop=True)
     peak_dates_df = peak_dates_df.rename(index=str, columns={'Date':'peak_date'})
     peak_dates_df.to_csv(root / 'peak_dates.csv', index=False)
+
+
+def get_smoothed(full_df: pd.DataFrame):
+    case_df = drop_lagged_reports_by_location(full_df.copy(), 'Confirmed')
+    case_df['day0'] = case_df.groupby('location_id', as_index=False)['Date'].transform(min)
+    case_df['Days'] = case_df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
+    case_df = case_df[['location_id', 'Date', 'Days', 'Confirmed', 'Confirmed case rate', 'population']]
+    case_df.loc[case_df['Confirmed'] == 0, 'Confirmed case rate'] = 0.1 / case_df['population']
+    case_df['ln(case rate)'] = np.log(case_df['Confirmed case rate'])
+    case_df = add_moving_average_rates(case_df, 'ln(case rate)', -np.inf)
+    case_df['Confirmed case rate'] = np.exp(case_df['ln(case rate)'])
+    case_df['Confirmed'] = case_df['Confirmed case rate'] * case_df['population']
+    
+    death_df = drop_lagged_reports_by_location(full_df.copy(), 'Deaths')
+    death_df['day0'] = death_df.groupby('location_id', as_index=False)['Date'].transform(min)
+    death_df['Days'] = death_df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
+    death_df = death_df[['location_id', 'Date', 'Days', 'Deaths', 'Death rate', 'population']]
+    death_df.loc[death_df['Deaths'] == 0, 'Death rate'] = 0.1 / death_df['population']
+    death_df['ln(death rate)'] = np.log(death_df['Death rate'])
+    death_df = add_moving_average_rates(death_df, 'ln(death rate)', -np.inf)
+    death_df['Death rate'] = np.exp(death_df['ln(death rate)'])
+    death_df['Deaths'] = death_df['Death rate'] * death_df['population']
+    
+    return case_df, death_df
