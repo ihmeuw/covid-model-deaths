@@ -161,10 +161,7 @@ class LeadingIndicator:
         test_df = add_moving_average_rates(test_df, 'ln(testing rate)', -np.inf)
         test_df['Testing rate'] = np.exp(test_df['ln(testing rate)'])
         test_df['Date'] = test_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
-        case_df = case_df.merge(
-            test_df[['location_id', 'Date', 'Tests', 'Testing rate', 'Observed ln(testing rate)', 'ln(testing rate)']], 
-            how='left'
-        )
+        case_df = case_df.merge(test_df[['location_id', 'Date', 'Testing rate']], how='left')
         case_df = pd.concat(
             [self._control_for_testing(case_df.loc[case_df['location_id'] == l]) for l in case_df.location_id.unique()]
         )
