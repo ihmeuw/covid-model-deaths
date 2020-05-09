@@ -371,12 +371,14 @@ def make_and_save_draw_plots(output_dir: str, loc_df: pd.DataFrame,
 
 
 def make_and_save_compare_average_plots(output_dir: str, raw_draw_path: str, average_draw_path: str,
-                                        yesterday_draw_path: str, before_yesterday_draw_path: str, label: str) -> str:
+                                        yesterday_draw_path: str, before_yesterday_draw_path: str, 
+                                        raw_data: pd.DataFrame, label: str) -> str:
     plotter = CompareAveragingModelDeaths(
         raw_draw_path=raw_draw_path,
         average_draw_path=average_draw_path,
         yesterday_draw_path=yesterday_draw_path,
-        before_yesterday_draw_path=before_yesterday_draw_path
+        before_yesterday_draw_path=before_yesterday_draw_path,
+        raw_data=raw_data
     )
     plot_path = f'{output_dir}/moving_average_compare.pdf'
     plotter.make_some_pictures(plot_path, label)

@@ -68,6 +68,7 @@ class LeadingIndicator:
         p1 = expit(logit_pos_int + logit_pos_logit_test * logit(t1))
         p2 = expit(logit_pos_int + logit_pos_logit_test * logit(t2))
         increase_from_testing = (t2 * p2 - t1 * p1) / (t1 * p1)
+        increase_from_testing = max(0, increase_from_testing)
 
         excess_reporting = ((c2 - c1) / c1) - increase_from_testing
 
@@ -160,7 +161,7 @@ class LeadingIndicator:
         test_df = add_moving_average_rates(test_df, 'ln(testing rate)', -np.inf)
         test_df['Testing rate'] = np.exp(test_df['ln(testing rate)'])
         test_df['Date'] = test_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
-        case_df = case_df.merge(test_df, how='left')
+        case_df = case_df.merge(test_df[['location_id', 'Date', 'Testing rate']], how='left')
         case_df = pd.concat(
             [self._control_for_testing(case_df.loc[case_df['location_id'] == l]) for l in case_df.location_id.unique()]
         )
