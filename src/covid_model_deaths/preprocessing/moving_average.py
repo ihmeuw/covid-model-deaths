@@ -30,7 +30,7 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
     if len(data) < buffer_window:
         return data
     
-    # extend first two/last two diffs
+    # extend traingular weighted diffs over last/first days of window
     #data = np.exp(data)
     w = np.array([1, 2, 3, 2, 1])
     w = w / w.sum()
