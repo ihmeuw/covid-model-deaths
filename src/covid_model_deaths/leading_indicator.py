@@ -238,9 +238,11 @@ class LeadingIndicator:
         # only use hospital if it is less than 3 days behind
         if df['from_hospital'].isnull().sum() < 3:
             df = df.loc[~df['from_hospital'].isnull()]
+            df = df.loc[~df['from_cases'].isnull()]
             df['Death rate'] = df[['from_cases', 'from_hospital']].mean(axis=1)
             df['source'] = 'cases+hospital'
         else:
+            df = df.loc[~df['from_cases'].isnull()]
             df['Death rate'] = df['from_cases']
             df['source'] = 'cases'
 
