@@ -27,7 +27,7 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
     data = data.loc[:, required_columns].set_index(COLUMNS.date).loc[:, measure]
 
     buffer_window = 5
-    if len(data) < buffer_window + 1:
+    if len(data) <= buffer_window:
         return data
     
     # extend traingular weighted diffs over last/first days of window

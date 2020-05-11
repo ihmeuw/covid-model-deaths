@@ -541,10 +541,13 @@ def save_points_and_peaks(loc_df: pd.DataFrame, submodel_dict: dict,
 
 
 def get_smoothed(full_df: pd.DataFrame):
+    full_df = full_df.sort_values(['location_id', 'Date'])
     case_df = drop_lagged_reports_by_location(full_df.copy(), 'Confirmed')
+    case_df = case_df[case_df['Confirmed'].notnull()]
     case_df['day0'] = case_df.groupby('location_id', as_index=False)['Date'].transform(min)
     case_df['Days'] = case_df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
     case_df = case_df[['location_id', 'Date', 'Days', 'Confirmed', 'Confirmed case rate', 'population']]
+    case_df['Confirmed case rate'] = case_df['Confirmed'] / case_df['population']
     case_df.loc[case_df['Confirmed'] == 0, 'Confirmed case rate'] = 0.1 / case_df['population']
     case_df['ln(case rate)'] = np.log(case_df['Confirmed case rate'])
     case_df = add_moving_average_rates(case_df, 'ln(case rate)', -np.inf)
