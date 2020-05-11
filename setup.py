@@ -29,6 +29,7 @@ if __name__ == "__main__":
         'scipy',
         'seaborn',
         'sklearn',
+        'statsmodels',
         'tqdm',
         'xlrd',
     ]
