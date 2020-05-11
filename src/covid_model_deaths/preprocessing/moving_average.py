@@ -26,15 +26,24 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
     required_columns = [COLUMNS.date, measure]
     data = data.loc[:, required_columns].set_index(COLUMNS.date).loc[:, measure]
 
-    if len(data) < window:
+    buffer_window = 5
+    if len(data) <= buffer_window:
         return data
     
-    # extend first two/last two diffs
+    # extend traingular weighted diffs over last/first days of window
     #data = np.exp(data)
-    pre = data[0] - np.diff(data[:window]).mean()
+    w = np.array([1, 2, 3, 2, 1])
+    w = w / w.sum()
+    
+    first_diff = np.diff(data[:buffer_window+1])
+    # second_diff = np.diff(np.diff(data[:buffer_window+2]))
+    pre = data[0] - (first_diff*w).sum()  # - (second_diff*w).sum()
     pre = pd.Series(pre, [data.index.min() - pd.Timedelta(days=1)], name=measure)
     pre.index.name = COLUMNS.date
-    post = data[len(data)-1] + np.diff(data[len(data)-window:]).mean()
+    
+    first_diff = np.diff(data[len(data)-(buffer_window+1):])
+    # second_diff = np.diff(np.diff(data[len(data)-(buffer_window+2):]))
+    post = data[len(data)-1] + (first_diff*w).sum()  # + (second_diff*w).sum()
     post = pd.Series(post, [data.index.max() + pd.Timedelta(days=1)], name=measure)
     post.index.name = COLUMNS.date
     data = pd.concat([

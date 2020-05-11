@@ -371,12 +371,14 @@ def make_and_save_draw_plots(output_dir: str, loc_df: pd.DataFrame,
 
 
 def make_and_save_compare_average_plots(output_dir: str, raw_draw_path: str, average_draw_path: str,
-                                        yesterday_draw_path: str, before_yesterday_draw_path: str, label: str) -> str:
+                                        yesterday_draw_path: str, before_yesterday_draw_path: str, 
+                                        raw_data: pd.DataFrame, label: str) -> str:
     plotter = CompareAveragingModelDeaths(
         raw_draw_path=raw_draw_path,
         average_draw_path=average_draw_path,
         yesterday_draw_path=yesterday_draw_path,
-        before_yesterday_draw_path=before_yesterday_draw_path
+        before_yesterday_draw_path=before_yesterday_draw_path,
+        raw_data=raw_data
     )
     plot_path = f'{output_dir}/moving_average_compare.pdf'
     plotter.make_some_pictures(plot_path, label)
@@ -528,10 +530,13 @@ def save_points_and_peaks(loc_df: pd.DataFrame, submodel_dict: dict,
 
 
 def get_smoothed(full_df: pd.DataFrame):
+    full_df = full_df.sort_values(['location_id', 'Date'])
     case_df = drop_lagged_reports_by_location(full_df.copy(), 'Confirmed')
+    case_df = case_df[case_df['Confirmed'].notnull()]
     case_df['day0'] = case_df.groupby('location_id', as_index=False)['Date'].transform(min)
     case_df['Days'] = case_df.apply(lambda x: (x['Date'] - x['day0']).days, axis=1)
     case_df = case_df[['location_id', 'Date', 'Days', 'Confirmed', 'Confirmed case rate', 'population']]
+    case_df['Confirmed case rate'] = case_df['Confirmed'] / case_df['population']
     case_df.loc[case_df['Confirmed'] == 0, 'Confirmed case rate'] = 0.1 / case_df['population']
     case_df['ln(case rate)'] = np.log(case_df['Confirmed case rate'])
     case_df = add_moving_average_rates(case_df, 'ln(case rate)', -np.inf)
