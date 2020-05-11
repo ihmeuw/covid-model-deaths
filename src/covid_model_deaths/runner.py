@@ -129,6 +129,16 @@ def make_leading_indicator(full_df: pd.DataFrame, data_version: str = 'best') ->
     return dcr_df, dhr_df, li_df
 
 
+def constrain_covariates(cov_df: pd.DataFrame, loc_df: pd.DataFrame):
+    # set lower bound for BRA locations to be 1
+    bra_locs = loc_df.loc[loc_df['Country/Region'] == 'Brazil', 'location_id'].to_list()
+    bra_rows = cov_df['location_id'].isin(bra_locs)
+    sub1_rows = cov_df['cov_3w'] < 1
+    cov_df.loc[bra_rows & sub1_rows, 'cov_3w'] = 1
+    
+    return cov_df
+
+
 def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                   age_death_df: pd.DataFrame, date_mean_df: pd.DataFrame, li_df: pd.DataFrame,
                   loc_df: pd.DataFrame, r0_locs: List[int], peak_file: str, output_directory: str,
@@ -225,6 +235,7 @@ def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                 else:
                     sd_cov_df = sd_cov.get_cov_df(weights=[None], k=k, empirical_weight_source=cov_source,
                                                   R0_file=r0_file)
+                sd_cov_df = constrain_covariates(sd_cov_df, loc_df)
                 sd_cov_df.to_csv(f'{model_out_dir}/{location_id}_covariate.csv', index=False)
                 if not os.path.exists(f'{model_out_dir}/{location_id}'):
                     os.mkdir(f'{model_out_dir}/{location_id}')
