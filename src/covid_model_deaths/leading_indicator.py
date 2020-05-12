@@ -150,7 +150,6 @@ class LeadingIndicator:
         case_df = add_moving_average_rates(case_df, 'ln(confirmed case rate)', -np.inf)
         case_df['Confirmed case rate'] = np.exp(case_df['ln(confirmed case rate)'])
         case_df['Date'] = case_df['Date'].apply(lambda x: x + pd.Timedelta(days=8))
-        full_case_df = case_df[['location_id', 'Date', 'Confirmed case rate']].copy()
         
         # adjust last 8 days of cases based on changes in testing over that time
         test_df = self._tests_per_capita(case_df[['location_id', 'population']].drop_duplicates())
@@ -165,6 +164,7 @@ class LeadingIndicator:
         case_df = pd.concat(
             [self._control_for_testing(case_df.loc[case_df['location_id'] == l]) for l in case_df.location_id.unique()]
         )
+        full_case_df = case_df[['location_id', 'Date', 'Confirmed case rate']].copy()
         
         hosp_df = self.full_df.loc[~self.full_df['Hospitalizations'].isnull()]
         # do the same thing with hospitalizations (not present for all locs, so subset)
@@ -238,9 +238,11 @@ class LeadingIndicator:
         # only use hospital if it is less than 3 days behind
         if df['from_hospital'].isnull().sum() < 3:
             df = df.loc[~df['from_hospital'].isnull()]
+            df = df.loc[~df['from_cases'].isnull()]
             df['Death rate'] = df[['from_cases', 'from_hospital']].mean(axis=1)
             df['source'] = 'cases+hospital'
         else:
+            df = df.loc[~df['from_cases'].isnull()]
             df['Death rate'] = df['from_cases']
             df['source'] = 'cases'
 
