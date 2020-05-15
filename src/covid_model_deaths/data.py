@@ -136,7 +136,7 @@ def drop_lagged_reports_by_location(data: pd.DataFrame, measure: str) -> pd.Data
     return data.loc[~lagged_data]
 
 
-def add_moving_average_rates(data: pd.DataFrame, measure: str, rate_threshold: float, n_smooths: int = 3) -> pd.DataFrame:
+def add_moving_average_rates(data: pd.DataFrame, measure: str, rate_threshold: float, n_smooths: int = 10) -> pd.DataFrame:
     """Smooths over the log age specific death rate.
 
     Parameters
