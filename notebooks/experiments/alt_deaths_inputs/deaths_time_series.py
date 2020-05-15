@@ -46,58 +46,35 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     not_missing = ~df['location_id'].isin(missing_locations)
     df = df.loc[not_missing]    
     
-    # smooth deaths and cases
-    cumul_df = (df.groupby('location_id', as_index=False)
-                .apply(lambda x: smoother(x, ['Confirmed case rate', 'Testing rate', 'Death rate'], 
-                                          daily=False, log=False))
-                .reset_index(drop=True))
-    ln_cumul_df = (df.groupby('location_id', as_index=False)
-                   .apply(lambda x: smoother(x, ['Confirmed case rate', 'Testing rate', 'Death rate'], 
-                                             daily=False, log=True))
-                   .reset_index(drop=True))
-    daily_df = (df.groupby('location_id', as_index=False)
-                .apply(lambda x: smoother(x, ['Confirmed case rate', 'Testing rate', 'Death rate'], 
-                                          daily=True, log=False))
-                .reset_index(drop=True))
-    ln_daily_df = (df.groupby('location_id', as_index=False)
-                   .apply(lambda x: smoother(x, ['Confirmed case rate', 'Testing rate', 'Death rate'], 
-                                             daily=True, log=True))
-                   .reset_index(drop=True))
+    # smooth deaths, cases, and testing in linear cumulative
+    smooth_df = (df.groupby('location_id', as_index=False)
+                 .apply(lambda x: smoother(x, ['Confirmed case rate', 'Testing rate', 'Death rate'], 
+                                           daily=False, log=False))
+                 .reset_index(drop=True))
 
-    # run models
-    with PdfPages('/ihme/homes/rmbarber/covid-19/alt_deaths/model_cumul.pdf') as pdf:
-        cumul_df = (cumul_df.groupby('location_id', as_index=False)
-                    .apply(lambda x: cdr_model(x, -np.inf, 
-                                               daily=False, log=False,
-                                               dep_var='Smoothed death rate', 
-                                               indep_vars=['Smoothed confirmed case rate', 'Smoothed testing rate'],
-                                               pdf=pdf))
-                    .reset_index(drop=True))
-    with PdfPages('/ihme/homes/rmbarber/covid-19/alt_deaths/model_ln_cumul.pdf') as pdf:
-        ln_cumul_df = (ln_cumul_df.groupby('location_id', as_index=False)
-                       .apply(lambda x: cdr_model(x, -np.inf, 
-                                                  daily=False, log=True,
-                                                  dep_var='Smoothed death rate', 
-                                                  indep_vars=['Smoothed confirmed case rate', 'Smoothed testing rate'],
-                                                  pdf=pdf))
-                       .reset_index(drop=True))
-    with PdfPages('/ihme/homes/rmbarber/covid-19/alt_deaths/model_daily.pdf') as pdf:
-        daily_df = (daily_df.groupby('location_id', as_index=False)
-                    .apply(lambda x: cdr_model(x, -np.inf, 
-                                               daily=True, log=False,
-                                               dep_var='Smoothed death rate', 
-                                               indep_vars=['Smoothed confirmed case rate', 'Smoothed testing rate'],
-                                               pdf=pdf))
-                    .reset_index(drop=True))
-    with PdfPages('/ihme/homes/rmbarber/covid-19/alt_deaths/model_ln_daily.pdf') as pdf:
-        ln_daily_df = (ln_daily_df.groupby('location_id', as_index=False)
-                       .apply(lambda x: cdr_model(x, -np.inf, 
-                                                  daily=True, log=True,
-                                                  dep_var='Smoothed death rate', 
-                                                  indep_vars=['Smoothed confirmed case rate', 'Smoothed testing rate'],
-                                                  pdf=pdf))
-                       .reset_index(drop=True))
-    #df.to_csv('/ihme/homes/rmbarber/covid-19/alt_deaths/model_ln_cumul.csv', index=False)
+    # run models in ln(cumulative)
+    with PdfPages('/ihme/homes/rmbarber/covid-19/alt_deaths/model_smooth.pdf') as pdf:
+        smooth_df = (smooth_df.groupby('location_id', as_index=False)
+                     .apply(lambda x: cdr_model(x, -15, 
+                                                daily=False, log=True, smooth_results=False,
+                                                death_var='Smoothed death rate',
+                                                case_var='Smoothed confirmed case rate',
+                                                test_var='Smoothed testing rate',
+                                                pdf=pdf))
+                     .reset_index(drop=True))
+    with PdfPages('/ihme/homes/rmbarber/covid-19/alt_deaths/model_results.pdf') as pdf:
+        df = (df.groupby('location_id', as_index=False)
+              .apply(lambda x: cdr_model(x, -15, 
+                                         daily=False, log=True, smooth_results=True, 
+                                         death_var='Death rate',
+                                         case_var='Confirmed case rate',
+                                         test_var='Testing rate',
+                                         pdf=pdf))
+              .reset_index(drop=True))
+    
+    # save
+    smooth_df.to_csv('/ihme/homes/rmbarber/covid-19/alt_deaths/model_results_smooth.csv', index=False)
+    df.to_csv('/ihme/homes/rmbarber/covid-19/alt_deaths/model_results_raw.csv', index=False)
     
     
 if __name__ == '__main__':
