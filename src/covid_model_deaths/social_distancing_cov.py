@@ -56,8 +56,6 @@ class SocialDistCov:
     def _process_closure_dataset(self) -> pd.DataFrame:
         # load data, keep relevant rows/columns
         df = pd.read_excel(self.closure_sheet)
-        south_africa_subnat = (df.country == 'South Africa') & (df.admin1.notnull())
-        df.loc[south_africa_subnat, 'merge_name'] = df.loc[south_africa_subnat, 'admin1']
 
         # FIXME: there have been issues in the past with merge_name and
         #  country not being the same, such that the threshold merge fails.
