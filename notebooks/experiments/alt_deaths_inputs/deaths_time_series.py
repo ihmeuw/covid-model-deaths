@@ -8,7 +8,6 @@ from typing import List, Dict
 from matplotlib.backends.backend_pdf import PdfPages
 
 from front_end_loader import load_locations, load_cases_deaths_pop, load_testing
-from smoother import smoother
 from cdr_model import cdr_model
 
 import warnings
@@ -46,22 +45,7 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     not_missing = ~df['location_id'].isin(missing_locations)
     df = df.loc[not_missing]    
     
-    # smooth deaths, cases, and testing in linear cumulative
-    smooth_df = (df.groupby('location_id', as_index=False)
-                 .apply(lambda x: smoother(x, ['Confirmed case rate', 'Testing rate', 'Death rate'], 
-                                           daily=False, log=False))
-                 .reset_index(drop=True))
-
-    # run models in ln(cumulative)
-    with PdfPages('/ihme/homes/rmbarber/covid-19/alt_deaths/model_smooth.pdf') as pdf:
-        smooth_df = (smooth_df.groupby('location_id', as_index=False)
-                     .apply(lambda x: cdr_model(x, -15, 
-                                                daily=False, log=True, smooth_results=False,
-                                                death_var='Smoothed death rate',
-                                                case_var='Smoothed confirmed case rate',
-                                                test_var='Smoothed testing rate',
-                                                pdf=pdf))
-                     .reset_index(drop=True))
+    # fit model
     with PdfPages('/ihme/homes/rmbarber/covid-19/alt_deaths/model_results.pdf') as pdf:
         df = (df.groupby('location_id', as_index=False)
               .apply(lambda x: cdr_model(x, -15, 
@@ -72,9 +56,8 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                                          pdf=pdf))
               .reset_index(drop=True))
     
-    # save
-    smooth_df.to_csv('/ihme/homes/rmbarber/covid-19/alt_deaths/model_results_smooth.csv', index=False)
-    df.to_csv('/ihme/homes/rmbarber/covid-19/alt_deaths/model_results_raw.csv', index=False)
+    # save output
+    df.to_csv('/ihme/homes/rmbarber/covid-19/alt_deaths/model_results.csv', index=False)
     
     
 if __name__ == '__main__':
