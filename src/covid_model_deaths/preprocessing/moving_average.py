@@ -58,7 +58,7 @@ def expanding_moving_average(data: pd.DataFrame, measure: str, window: int) -> p
     return moving_average
 
 
-def expanding_moving_average_by_location(data: pd.DataFrame, measure: str, window: int = 10) -> pd.Series:
+def expanding_moving_average_by_location(data: pd.DataFrame, measure: str, window: int = 3) -> pd.Series:
     """Expands a dataset over date and performs a moving average by location.
 
     Parameters
