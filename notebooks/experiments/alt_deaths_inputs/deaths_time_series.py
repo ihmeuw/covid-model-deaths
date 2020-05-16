@@ -46,19 +46,23 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     df = df.loc[not_missing]    
     
     # fit model
-    with PdfPages('/ihme/homes/rmbarber/covid-19/alt_deaths/model_results.pdf') as pdf:
-        df = (df.groupby('location_id', as_index=False)
-              .apply(lambda x: cdr_model(x, -15, 
-                                         daily=False, log=True, smooth_results=True, 
-                                         death_var='Death rate',
-                                         case_var='Confirmed case rate',
-                                         test_var='Testing rate',
-                                         pdf=pdf))
-              .reset_index(drop=True))
+    np.random.seed(15243)
+    with PdfPages('/ihme/covid-19/deaths/dev/2020_05_12_newseries/model_results.pdf') as pdf:
+        draw_df = (df.groupby('location_id', as_index=False)
+                   .apply(lambda x: cdr_model(x, 
+                                              deaths_threshold=2, 
+                                              daily=False, log=True, 
+                                              death_var='Death rate',
+                                              case_var='Confirmed case rate',
+                                              test_var='Testing rate',
+                                              smooth_settings={'daily':True, 'log':True},
+                                              pdf=pdf))
+                   .reset_index(drop=True))
     
     # save output
-    df.to_csv('/ihme/homes/rmbarber/covid-19/alt_deaths/model_results.csv', index=False)
-    
-    
+    df.to_csv('/ihme/covid-19/deaths/dev/2020_05_12_newseries/model_data.csv', index=False)
+    draw_df.to_csv('/ihme/covid-19/deaths/dev/2020_05_12_newseries/model_results.csv', index=False)
+
+
 if __name__ == '__main__':
     main(sys.argv[1], sys.argv[2], sys.argv[3])

@@ -12,6 +12,12 @@ def load_locations(location_set_version_id: int) -> pd.DataFrame:
     return df
 
 
+def fill_dates(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.sort_values('Date').set_index('Date')
+    df = df.asfreq('D', method='pad').reset_index()
+    
+    return df
+
 def load_cases_deaths_pop(inputs_version: str = 'best') -> Tuple[pd.DataFrame]:
     # read in dataframe
     full_df = pd.read_csv(f'/ihme/covid-19/model-inputs/{inputs_version}/full_data.csv')
@@ -33,6 +39,9 @@ def load_cases_deaths_pop(inputs_version: str = 'best') -> Tuple[pd.DataFrame]:
     has_cases = case_df.groupby('location_id')['Confirmed case rate'].transform(max).astype(bool)
     case_df = case_df.loc[non_na & has_cases]
     case_df = case_df[['location_id', 'True date', 'Date', 'Confirmed case rate']].reset_index(drop=True)
+    case_df = (case_df.groupby('location_id', as_index=False)
+               .apply(lambda x: fill_dates(x))
+               .reset_index(drop=True))
     
     # death data
     death_df = full_df[['location_id', 'Date', 'Death rate']].copy()
@@ -40,6 +49,9 @@ def load_cases_deaths_pop(inputs_version: str = 'best') -> Tuple[pd.DataFrame]:
     has_deaths = death_df.groupby('location_id')['Death rate'].transform(max).astype(bool)
     death_df = death_df.loc[non_na & has_deaths]
     death_df = death_df.reset_index(drop=True)
+    death_df = (death_df.groupby('location_id', as_index=False)
+                .apply(lambda x: fill_dates(x))
+                .reset_index(drop=True))
     
     # population data
     pop_df = full_df[['location_id', 'population']].drop_duplicates()
@@ -67,5 +79,8 @@ def load_testing(testing_version: str = 'best') -> pd.DataFrame:
     
     # keep columns we need
     df = df[['location_id', 'True date', 'Date', 'Testing rate']].reset_index(drop=True)
+    df = (df.groupby('location_id', as_index=False)
+          .apply(lambda x: fill_dates(x))
+          .reset_index(drop=True))
     
     return df

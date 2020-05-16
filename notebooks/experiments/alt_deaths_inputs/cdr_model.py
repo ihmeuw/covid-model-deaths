@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import List
+from typing import List, Dict
 from slime.core import MRData
 from slime.model import CovModel, CovModelSet, MRModel
 from smoother import smoother
@@ -18,10 +18,9 @@ def slimer(mod_df: pd.DataFrame,
                     col_covs=['intercept', case_var, test_var])
     
     # set up covariates
-    int_prior = mod_df[death_var].min()
     int_cov_model = CovModel('intercept',
-                             gprior=np.array([0., np.inf]),
-                             use_re=False)
+                             use_re=False,
+                             gprior=np.array([0, np.inf]))
     case_cov_model = CovModel(case_var,
                               use_re=False,
                               bounds=np.array([0., np.inf]))
@@ -44,17 +43,27 @@ def slimer(mod_df: pd.DataFrame,
     return pred_df
     
     
-def cdr_model(df: pd.DataFrame, death_threshold: int, 
-              daily: bool, log: bool, smooth_results: bool,
+def cdr_model(df: pd.DataFrame, deaths_threshold: int, 
+              daily: bool, log: bool, 
               death_var: str, case_var: str, test_var: str,
-              pdf) -> pd.DataFrame:
+              smooth_settings: Dict = None, 
+              pdf=None) -> pd.DataFrame:
+    # are we smoothing results?
+    if smooth_settings is not None:
+        smooth_results = True
+    else:
+        smooth_results = False
+        
+    # should be smootihing after (take away varying functionality here)
+    assert smooth_results, 'Should be smoothing.'
+    
     # add intercept
     orig_cols = df.columns.to_list()
     df['intercept'] = 1
 
     # log transform, setting floor of 0.1 per population
     df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.1 / df['population'].values[0]
+    floor = 0.5 / df['population'].values[0]
     adj_vars = {}
     for orig_var in [death_var, case_var, test_var]:
         mod_var = f'Model {orig_var.lower()}'
@@ -63,8 +72,8 @@ def cdr_model(df: pd.DataFrame, death_threshold: int,
             start_idx = df.loc[~df[mod_var].isnull()].index.values[0]
             df[mod_var][start_idx+1:] = np.diff(df[mod_var].values[start_idx:])
         if log:
+            df.loc[df[mod_var] < floor, mod_var] = floor
             df[mod_var] = np.log(df[mod_var])
-            df.loc[df[orig_var] < floor, mod_var] = np.log(floor)
         adj_vars.update({orig_var:mod_var})
 
     # keep what we can use to predict (subset further to fitting dataset below)
@@ -73,9 +82,11 @@ def cdr_model(df: pd.DataFrame, death_threshold: int,
 
     # lose NAs in deaths as well for modeling
     mod_df = df.copy()
-    above_thresh = mod_df[adj_vars[death_var]] >= death_threshold
+    above_thresh = mod_df[death_var] * df['population'] >= deaths_threshold
     non_na = ~mod_df[adj_vars[death_var]].isnull()
     mod_df = mod_df.loc[above_thresh & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
+    if len(mod_df) < 3:
+        raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths in {df['location_name'][0]}")
 
     # run model and predict
     df = slimer(
@@ -89,9 +100,17 @@ def cdr_model(df: pd.DataFrame, death_threshold: int,
         df['Predicted death rate'] = df['Predicted death rate'].cumsum()
     model_params = df[[i for i in df.columns if i.endswith('coefficient')]].loc[0].to_dict()
     
-    # smooth output?
-    if smooth_results:
-        df = smoother(df, ['Predicted death rate'], daily=False, log=False)
+    # smooth output
+    draw_df = smoother(df, [['Death rate', 'Predicted death rate']], **smooth_settings)
+    draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
+    df = df.sort_values('Date').set_index('Date')
+    draw_df = draw_df.sort_values('Date').set_index('Date')
+    df['Smoothed predicted death rate'] = np.mean(draw_df[draw_cols], axis=1)
+    df['Smoothed predicted death rate lower'] = np.percentile(draw_df[draw_cols], 2.5, axis=1)
+    df['Smoothed predicted death rate upper'] = np.percentile(draw_df[draw_cols], 97.5, axis=1)
+    df = df.reset_index()
+    draw_df = draw_df.reset_index()
+    draw_df = draw_df.rename(index=str, columns={'Date':'date'})
 
     # plot
     if pdf is not None:
@@ -102,7 +121,7 @@ def cdr_model(df: pd.DataFrame, death_threshold: int,
                 smooth_results,
                 pdf)
     
-    return df
+    return draw_df
 
 
 def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str], 
@@ -112,8 +131,9 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str],
 
     raw_lines = {'color':'navy', 'alpha':0.5, 'linewidth':3}
     raw_points = {'c':'dodgerblue', 'edgecolors':'navy', 's':100, 'alpha':0.5}
-    smoothed_lines = {'color':'firebrick', 'alpha':0.75, 'linewidth':3}
     pred_lines = {'color':'forestgreen', 'alpha':0.75, 'linewidth':3}
+    smoothed_pred_lines = {'color':'firebrick', 'alpha':0.75, 'linewidth':3}
+    smoothed_pred_area = {'color':'firebrick', 'alpha':0.25}
 
     for i, (smooth_variable, model_variable) in enumerate(zip(unadj_vars, adj_vars)):
         # get coefficients (think of a more elegant way of doing this)
@@ -126,8 +146,8 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str],
         raw_variable = smooth_variable.replace('Smoothed ', '').capitalize()
         ax[0, i].plot(df['Date'], df[raw_variable] * df['population'], **raw_lines)
         ax[0, i].scatter(df['Date'], df[raw_variable] * df['population'], **raw_points)
-        if not smooth_results:
-            ax[0, i].plot(df['Date'], df[smooth_variable] * df['population'], linestyle='--', **smoothed_lines)
+        # if not smooth_results and smooth_variable in df.columns:
+        #     ax[0, i].plot(df['Date'], df[smooth_variable] * df['population'], linestyle='--', **smoothed_lines)
         ax[0, i].set_title(f"{raw_variable.replace(' rate', '')}" + param_label, fontsize=12)
         if i == 0:
             ax[0, i].set_ylabel(f'Cumulative', fontsize=10)
@@ -139,10 +159,10 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str],
         ax[1, i].scatter(df['Date'][1:], 
                          np.diff(df[raw_variable]) * df['population'][1:], 
                          **raw_points)
-        if not smooth_results:
-            ax[1, i].plot(df['Date'][1:], 
-                          np.diff(df[smooth_variable]) * df['population'][1:], 
-                          **smoothed_lines)
+        # if not smooth_results and smooth_variable in df.columns:
+        #     ax[1, i].plot(df['Date'][1:], 
+        #                   np.diff(df[smooth_variable]) * df['population'][1:], 
+        #                   **smoothed_lines)
         ax[1, i].axhline(0, color='black', alpha=0.25, linestyle='--')
         ax[1, i].set_xlabel('Date', fontsize=10)
         if i == 0:
@@ -154,10 +174,23 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str],
                   **pred_lines)
     if smooth_results:
         ax[0, 0].plot(df['Date'], 
-                      df['Smoothed predicted death rate'] * df['population'], linestyle='--', **smoothed_lines)
+                      df['Smoothed predicted death rate'] * df['population'], linestyle='--', 
+                      **smoothed_pred_lines)
+        ax[0, 0].fill_between(
+            df['Date'],
+            df['Smoothed predicted death rate lower'], 
+            df['Smoothed predicted death rate upper'],
+            **smoothed_pred_area
+        )
         ax[1, 0].plot(df['Date'][1:], 
                       np.diff(df['Smoothed predicted death rate']) * df['population'][1:], 
-                      **smoothed_lines)
+                      **smoothed_pred_lines)
+        ax[1, 0].fill_between(
+            df['Date'][1:],
+            np.diff(df['Smoothed predicted death rate lower']) * df['population'][1:], 
+            np.diff(df['Smoothed predicted death rate upper']) * df['population'][1:], 
+            **smoothed_pred_area
+        )
         
     fig.suptitle(df['location_name'].values[0], y=1.0025, fontsize=14)
     fig.tight_layout()
