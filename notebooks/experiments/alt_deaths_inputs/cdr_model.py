@@ -101,7 +101,7 @@ def cdr_model(df: pd.DataFrame, deaths_threshold: int,
     model_params = df[[i for i in df.columns if i.endswith('coefficient')]].loc[0].to_dict()
     
     # smooth output
-    draw_df = smoother(df, [['Death rate', 'Predicted death rate']], **smooth_settings)
+    draw_df = smoother(df, ['Death rate', 'Predicted death rate'], **smooth_settings)
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
     df = df.sort_values('Date').set_index('Date')
     draw_df = draw_df.sort_values('Date').set_index('Date')
