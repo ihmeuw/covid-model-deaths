@@ -50,15 +50,17 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
     # get uncertainty
     smooth_y = np.array([smooth_y]).T
     residuals = y - smooth_y
-    if not log:
-        residuals /= smooth_y
+    #if not log:
+    residuals = residuals / smooth_y
+    #
     residuals = residuals[~np.isnan(residuals)]
     residuals = residuals.flatten()
     draws = np.random.choice(residuals, n_draws, replace=True)
     draws = np.sort(draws)
     draws = np.array([draws])
-    if not log:
-        draws = smooth_y * draws
+    #if not log:
+    draws = smooth_y * draws
+    #
     draws = smooth_y + draws
 
     # back into linear cumulative and add prediction to data

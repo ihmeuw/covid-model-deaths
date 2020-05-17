@@ -36,6 +36,7 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     
     # load all data we have
     loc_df = load_locations(location_set_version_id)
+    loc_df = loc_df.loc[loc_df['path_to_top_parent'].str.startswith('102,')]
     case_df, death_df, pop_df = load_cases_deaths_pop(inputs_version)
     test_df = load_testing(testing_version)
     

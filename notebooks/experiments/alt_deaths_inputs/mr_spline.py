@@ -13,7 +13,8 @@ class SplineFit:
     """Spline fit class
     """
     def __init__(self, t, y,
-                 spline_options=None):
+                 spline_options=None,
+                 se_exp=0.2):
         """Constructor of the SplineFit
         Args:
             t (np.ndarray): Independent variable.
@@ -23,12 +24,16 @@ class SplineFit:
         """
         self.t = t
         self.y = y
+        y_se = 1.0/np.exp(self.y)**se_exp
+        se_floor = np.percentile(y_se, 0.05)
+        y_se[y_se < se_floor] = se_floor
+        self.y_se = y_se
         self.spline_options = {} if spline_options is None else spline_options
 
         # create mrbrt object
         df = pd.DataFrame({
             'y': self.y,
-            'y_se': 1.0/np.exp(self.y)**0.5,
+            'y_se': self.y_se,
             't': self.t,
             'study_id': 1,
         })
