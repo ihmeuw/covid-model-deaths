@@ -63,7 +63,7 @@ def cdr_model(df: pd.DataFrame, deaths_threshold: int,
 
     # log transform, setting floor of 0.1 per population
     df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.5 / df['population'].values[0]
+    floor = 0.1 / df['population'].values[0]
     adj_vars = {}
     for orig_var in [death_var, case_var, test_var]:
         mod_var = f'Model {orig_var.lower()}'
@@ -110,8 +110,12 @@ def cdr_model(df: pd.DataFrame, deaths_threshold: int,
     df['Smoothed predicted death rate upper'] = np.percentile(draw_df[draw_cols], 97.5, axis=1)
     df = df.reset_index()
     draw_df = draw_df.reset_index()
+    
+    # save draw data for infectionator
     draw_df = draw_df.rename(index=str, columns={'Date':'date'})
-
+    draw_df[draw_cols] = draw_df[draw_cols] * draw_df[['population']].values
+    del draw_df['population']
+    
     # plot
     if pdf is not None:
         plotter(df, 
@@ -138,7 +142,7 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str],
     for i, (smooth_variable, model_variable) in enumerate(zip(unadj_vars, adj_vars)):
         # get coefficients (think of a more elegant way of doing this)
         if f'{model_variable} coefficient' in list(model_params.keys()):
-            param_label = f" - coefficient: {np.round(model_params[f'{model_variable} coefficient'], 6)}"
+            param_label = f" - coefficient: {np.round(model_params[f'{model_variable} coefficient'], 8)}"
         else:
             param_label = ''
         
@@ -178,8 +182,8 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str],
                       **smoothed_pred_lines)
         ax[0, 0].fill_between(
             df['Date'],
-            df['Smoothed predicted death rate lower'], 
-            df['Smoothed predicted death rate upper'],
+            df['Smoothed predicted death rate lower'] * df['population'], 
+            df['Smoothed predicted death rate upper'] * df['population'], 
             **smoothed_pred_area
         )
         ax[1, 0].plot(df['Date'][1:], 

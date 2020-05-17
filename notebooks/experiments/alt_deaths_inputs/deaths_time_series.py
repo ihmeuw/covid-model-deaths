@@ -1,3 +1,4 @@
+import os
 import sys
 from functools import reduce
 import pandas as pd
@@ -23,7 +24,16 @@ def find_missing_locations(df: pd.DataFrame, measure: str, loc_df: pd.DataFrame)
     return missing_list
     
 
-def main(location_set_version_id: int, inputs_version: str, testing_version: str):
+def main(location_set_version_id: int, inputs_version: str, testing_version: str,
+         run_label: str):
+    # set up out dir
+    out_dir = f'/ihme/covid-19/deaths/dev/{run_label}'
+    if os.path.exists(out_dir):
+        #raise ValueError('Directory already exists.')
+        pass
+    else:
+        os.mkdir(out_dir)
+    
     # load all data we have
     loc_df = load_locations(location_set_version_id)
     case_df, death_df, pop_df = load_cases_deaths_pop(inputs_version)
@@ -47,7 +57,7 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     
     # fit model
     np.random.seed(15243)
-    with PdfPages('/ihme/covid-19/deaths/dev/2020_05_12_newseries/model_results.pdf') as pdf:
+    with PdfPages(f'{out_dir}/model_results.pdf') as pdf:
         draw_df = (df.groupby('location_id', as_index=False)
                    .apply(lambda x: cdr_model(x, 
                                               deaths_threshold=2, 
@@ -60,9 +70,9 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                    .reset_index(drop=True))
     
     # save output
-    df.to_csv('/ihme/covid-19/deaths/dev/2020_05_12_newseries/model_data.csv', index=False)
-    draw_df.to_csv('/ihme/covid-19/deaths/dev/2020_05_12_newseries/model_results.csv', index=False)
+    df.to_csv(f'{out_dir}/model_data.csv', index=False)
+    draw_df.to_csv(f'{out_dir}/model_results.csv', index=False)
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2], sys.argv[3])
+    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])

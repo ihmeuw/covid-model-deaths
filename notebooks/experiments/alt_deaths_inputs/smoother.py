@@ -6,7 +6,7 @@ from patsy import dmatrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List
-from ihme_math_utils.standard_errors import estimate_standard_error
+# from ihme_math_utils.standard_errors import estimate_standard_error
 
 
 def smoother(df: pd.DataFrame, smooth_var_sets: List[List[str]], 
@@ -19,10 +19,11 @@ def smoother(df: pd.DataFrame, smooth_var_sets: List[List[str]],
         # extract inputs
         keep_idx = ~df[smooth_var_set].isnull().all(axis=1)
         y = df.loc[keep_idx, smooth_var_set].values
+        pop = df.loc[keep_idx, 'population'].values
         if daily:
             y[1:] = np.diff(y, axis=0)
         if log:
-            floor = 0.5 / df['population'][0]
+            floor = 0.1 / df['population'][0]
             y[y < floor] = floor
             y = np.log(y)
         x = df.index[keep_idx].values
@@ -47,17 +48,29 @@ def smoother(df: pd.DataFrame, smooth_var_sets: List[List[str]],
         else:
             # don't smooth if no difference
             smooth_y = y
-            
-        stds = estimate_standard_error(x=x.tolist(), y=y[:,1].tolist(), mode="fast", window_size=3)
-        draws = np.random.normal(smooth_y, stds, (n_draws, smooth_y.size)).T
-        #draws = np.sort(draws, axis=1)
+        
+        # get uncertainty
+        smooth_y = np.array([smooth_y]).T
+        residuals = y - smooth_y
+        if not log:
+            residuals /= smooth_y
+        residuals = residuals[~np.isnan(residuals)]
+        residuals = residuals.flatten()
+        draws = np.random.choice(residuals, n_draws, replace=True)
+        draws = np.sort(draws)
+        draws = np.array([draws])
+        if not log:
+            draws = smooth_y * draws
+        draws = smooth_y + draws
         
         # back into linear cumulative and add prediction to data
         if log:
             draws = np.exp(draws)
+            smooth_y = np.exp(smooth_y)
+        draws *= (smooth_y / np.array([draws.mean(axis=1)]).T)
         if daily:
             draws = draws.cumsum(axis=0)
-        draw_df = df.loc[x, ['location_id', 'Date']].reset_index(drop=True)
+        draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
         draw_df = pd.concat([draw_df, pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(n_draws)])], axis=1)
             
     return draw_df
