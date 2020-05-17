@@ -14,7 +14,7 @@ MOBILITY_SOURCES = ['google', 'descartes', 'safegraph']
 # TODO: Don't know what this is at all.
 KS = [21]  # 14,
 # TODO: use drmaa and a job template.
-QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=15G -l fthread=3 '\
+QSUB_STR = 'qsub -N {job_name} -P proj_covid -q d.q -b y -l m_mem_free=20G -l fthread=3 '\
            '-o /share/temp/sgeoutput/covid/output/ '\
            '-e /share/temp/sgeoutput/covid/errors/ '\
            '{python} {model_file} '\
