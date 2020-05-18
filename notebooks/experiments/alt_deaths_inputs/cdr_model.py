@@ -103,6 +103,8 @@ def cdr_model(df: pd.DataFrame, deaths_threshold: int,
     # spline on output
     draw_df = smoother(df, ['Death rate', 'Predicted death rate'], deaths_threshold, **smooth_settings)
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
+    
+    # add summary stats to dataset for plotting
     df = df.sort_values('Date').set_index('Date')
     draw_df = draw_df.sort_values('Date').set_index('Date')
     df['Smoothed predicted death rate'] = np.mean(draw_df[draw_cols], axis=1)
@@ -124,7 +126,7 @@ def cdr_model(df: pd.DataFrame, deaths_threshold: int,
     df.loc[first_day, 'Smoothed predicted daily death rate lower'] = df['Smoothed predicted death rate lower']
     df.loc[first_day, 'Smoothed predicted daily death rate upper'] = df['Smoothed predicted death rate upper']
     
-    # save draw data for infectionator
+    # format draw data for infectionator
     draw_df = draw_df.rename(index=str, columns={'Date':'date'})
     draw_df[draw_cols] = draw_df[draw_cols] * draw_df[['population']].values
     del draw_df['population']
@@ -143,9 +145,11 @@ def cdr_model(df: pd.DataFrame, deaths_threshold: int,
 
 def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str], 
             model_params: dict, smooth_results: bool, pdf):
+    # set up plot
     sns.set_style('whitegrid')
     fig, ax = plt.subplots(2, 3, figsize=(24, 16))
 
+    # aesthetic features
     raw_lines = {'color':'navy', 'alpha':0.5, 'linewidth':3}
     raw_points = {'c':'dodgerblue', 'edgecolors':'navy', 's':100, 'alpha':0.5}
     pred_lines = {'color':'forestgreen', 'alpha':0.75, 'linewidth':3}
@@ -181,7 +185,7 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str],
         #                   np.diff(df[smooth_variable]) * df['population'][1:], 
         #                   **smoothed_lines)
         ax[1, i].axhline(0, color='black', alpha=0.25, linestyle='--')
-        if 'death' in smooth_variable:
+        if 'death' in smooth_variable.lower():
             ax[1, i].set_xlabel('Date', fontsize=10)
         else:
             ax[1, i].set_xlabel('Date (+8 days)', fontsize=10)
