@@ -57,12 +57,12 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str], deaths_threshold: int,
     smooth_y = np.array([smooth_y]).T
     residuals = y - smooth_y
     residuals = residuals[above_thresh & ~np.isnan(residuals)]
-    rmsd = np.sqrt(np.median(residuals**2))
-    nrmsd = rmsd / np.abs(np.median(smooth_y))
-    draws = np.random.normal(0, nrmsd, n_draws)
+    mad = np.median(np.abs(residuals))
+    #nrmsd = rmsd / np.abs(np.median(smooth_y))
+    draws = np.random.normal(0, mad, n_draws)
     draws = np.sort(draws)
     draws = np.array([draws])
-    draws = smooth_y * draws
+    #draws = smooth_y * draws
     draws = smooth_y + draws
 
     # back into linear cumulative and add prediction to data
