@@ -15,6 +15,16 @@ import warnings
 warnings.simplefilter('ignore')
 
 
+def holdout_days(df: pd.DataFrame, n_holdout_days: int) -> pd.DataFrame:
+    df = df.copy()
+    df['last_date'] = df.groupby('location_id')['Date'].transform(max)
+    keep_idx = df.apply(lambda x: x['Date'] <= x['last_date'] - pd.Timedelta(days=n_holdout_days), axis=1)
+    df = df.loc[keep_idx].reset_index(drop=True)
+    del df['last_date']
+    
+    return df
+    
+
 def find_missing_locations(df: pd.DataFrame, measure: str, loc_df: pd.DataFrame) -> List[int]:
     missing_list = list(set(loc_df['location_id']) - set(df['location_id'].unique()))
     if len(missing_list) > 0:
@@ -25,7 +35,7 @@ def find_missing_locations(df: pd.DataFrame, measure: str, loc_df: pd.DataFrame)
     
 
 def main(location_set_version_id: int, inputs_version: str, testing_version: str,
-         run_label: str):
+         run_label: str, n_holdout_days: int = 0):
     # set up out dir
     out_dir = f'/ihme/covid-19/deaths/dev/{run_label}'
     if os.path.exists(out_dir):
@@ -38,6 +48,11 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     loc_df = load_locations(location_set_version_id)
     case_df, death_df, pop_df = load_cases_deaths_pop(inputs_version)
     test_df = load_testing(testing_version)
+    
+    # drop days of data as specified
+    case_df = holdout_days(case_df, n_holdout_days)
+    death_df = holdout_days(death_df, n_holdout_days)
+    test_df = holdout_days(test_df, n_holdout_days)
     
     # locations we are dropping -- Cueta (too few deaths), Melilla (too few deaths)
     drop_locs = [60369, 60373]
@@ -57,7 +72,7 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                  pop_df[['location_id', 'population']]])
     df = loc_df[['location_id', 'location_name']].merge(df)
     not_missing = ~df['location_id'].isin(missing_locations)
-    df = df.loc[not_missing]    
+    df = df.loc[not_missing]  
     
     # fit model
     np.random.seed(15243)
@@ -79,4 +94,4 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
