@@ -56,15 +56,13 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str], deaths_threshold: int,
     # get uncertainty
     smooth_y = np.array([smooth_y]).T
     residuals = y - smooth_y
-    residuals = residuals[above_thresh & ~np.isnan(residuals)]
+    residuals = residuals[~np.isnan(residuals)]  # above_thresh & 
     mad = np.median(np.abs(residuals))
     std = mad * 1.4826
-    draws = np.random.normal(0, std, n_draws)
-    draws = np.sort(draws)
-    draws = np.array([draws])
-    draws = smooth_y + draws
+    draws = np.random.normal(0, std, (n_draws, smooth_y.size))
+    draws = smooth_y + draws.T
 
-    # back into linear cumulative and add prediction to data
+    # set to linear, make sure mean of linear draws equals linear point estimate, add up cumulative, and create dataframe
     if log:
         draws = np.exp(draws)
         smooth_y = np.exp(smooth_y)
