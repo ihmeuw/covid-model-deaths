@@ -168,7 +168,7 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str],
         #                   np.diff(df[smooth_variable]) * df['population'][1:], 
         #                   **smoothed_lines)
         ax[1, i].axhline(0, color='black', alpha=0.25, linestyle='--')
-        if smooth_variable.contains('death'):
+        if 'death' in smooth_variable:
             ax[1, i].set_xlabel('Date', fontsize=10)
         else:
             ax[1, i].set_xlabel('Date (+8 days)', fontsize=10)
