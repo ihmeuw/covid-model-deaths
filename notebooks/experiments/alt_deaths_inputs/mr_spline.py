@@ -12,21 +12,26 @@ from mrtool import MRBRT
 class SplineFit:
     """Spline fit class
     """
-    def __init__(self, t, y,
+    def __init__(self, t, y, obs_data,
                  spline_options=None,
-                 se_exp=0.2):
+                 se_exp=0.2,
+                 pseudo_se_multiplier=1.25):
         """Constructor of the SplineFit
         Args:
             t (np.ndarray): Independent variable.
             y (np.ndarray): Dependent variable.
+            obs_data (np.ndarray): Flag identifying whether deaths are observed or predicted.
             spline_options (dict | None, optional):
                 Dictionary of spline prior options.
+            se_exp (float): Power to which denominator of SE function is raised.
+            pseudo_se_multiplier (float): Inflation factor for non-observed data SE.
         """
         self.t = t
         self.y = y
-        y_se = 1.0/np.exp(self.y)**se_exp
+        y_se = 1./np.exp(self.y)**se_exp
         se_floor = np.percentile(y_se, 0.05)
         y_se[y_se < se_floor] = se_floor
+        y_se[obs_data == 0] *= pseudo_se_multiplier
         self.y_se = y_se
         self.spline_options = {} if spline_options is None else spline_options
 

@@ -6,14 +6,16 @@ from typing import List
 from mr_spline import SplineFit
 
 
-def smoother(df: pd.DataFrame, smooth_var_set: List[str], 
+def smoother(df: pd.DataFrame, smooth_var_set: List[str], deaths_threshold: int,
              daily: bool, log: bool, n_draws: int = 1000) -> pd.DataFrame:
-    # get overall knot options
+    # get overall knot options (one week apart)
     days = df.index.values
-    day_knots = np.arange(days[0], days[-1], 7)[1:]
+    week_knots = np.arange(days[0], days[-1], 7)[1:]
     
     # extract inputs
     keep_idx = ~df[smooth_var_set].isnull().all(axis=1)
+    no_na_idx = ~df[smooth_var_set].isnull().any(axis=1)
+    above_thresh = df.loc[keep_idx, smooth_var_set].values * df.loc[keep_idx, ['population']].values >= deaths_threshold
     y = df.loc[keep_idx, smooth_var_set].values
     if daily:
         y[1:] = np.diff(y, axis=0)
@@ -24,23 +26,27 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
     x = df.index[keep_idx].values
 
     if y[~np.isnan(y)].ptp() > 1e-10 and x.ptp() > 7:
-        # create design matrix
-        x_knots = [i for i in day_knots if i in x]
-        if x_knots[0] < x[0] + 3:
-            x_knots = x_knots[1:]
-        if x_knots[-1] > x[-1] - 3:
-            x_knots = x_knots[:-1]
+        # determine knots
+        #x_knots = [i for i in week_knots if i in x[1:-1][no_na_idx[1:-1]]]
+        x_knots = np.percentile(x[1:-1][no_na_idx[1:-1]], (25, 50, 65, 80, 95)).tolist()
         x_knots = np.array([x[0]] + x_knots + [x[-1]]) / x.max()
 
-        # get smoothed curve (dropping NAs)
+        # get smoothed curve (dropping NAs, inflating variance for deaths from cases - ASSUMES THAT IS SECOND COLUMN)
+        obs_data = y.copy()
+        obs_data[:,0] = 1
+        obs_data[:,1] = 0
         y_fit = y.flatten()
+        obs_data = obs_data.flatten()
         x_fit = np.repeat(x, y.shape[1], axis=0)
         non_na_idx = ~np.isnan(y_fit)
         y_fit = y_fit[non_na_idx]
+        obs_data = obs_data[non_na_idx]
         x_fit = x_fit[non_na_idx]
-        mr_mod = SplineFit(x_fit, y_fit, 
+        mr_mod = SplineFit(x_fit, y_fit, obs_data,
                            {'spline_knots': x_knots,
-                            'spline_degree': 3})
+                            'spline_degree': 3,
+                            'spline_r_linear':True,
+                            'spline_l_linear':True})
         mr_mod.fit_spline()
         smooth_y = mr_mod.predict(x)
     else:
@@ -50,17 +56,13 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
     # get uncertainty
     smooth_y = np.array([smooth_y]).T
     residuals = y - smooth_y
-    #if not log:
-    residuals = residuals / smooth_y
-    #
-    residuals = residuals[~np.isnan(residuals)]
-    residuals = residuals.flatten()
-    draws = np.random.choice(residuals, n_draws, replace=True)
+    residuals = residuals[above_thresh & ~np.isnan(residuals)]
+    rmsd = np.sqrt(np.median(residuals**2))
+    nrmsd = rmsd / np.abs(np.median(smooth_y))
+    draws = np.random.normal(0, nrmsd, n_draws)
     draws = np.sort(draws)
     draws = np.array([draws])
-    #if not log:
     draws = smooth_y * draws
-    #
     draws = smooth_y + draws
 
     # back into linear cumulative and add prediction to data

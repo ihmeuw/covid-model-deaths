@@ -61,7 +61,7 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     with PdfPages(f'{out_dir}/model_results.pdf') as pdf:
         draw_df = (df.groupby('location_id', as_index=False)
                    .apply(lambda x: cdr_model(x, 
-                                              deaths_threshold=2, 
+                                              deaths_threshold=5, 
                                               daily=False, log=True, 
                                               death_var='Death rate',
                                               case_var='Confirmed case rate',
