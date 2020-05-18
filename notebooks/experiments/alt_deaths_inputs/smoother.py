@@ -6,8 +6,8 @@ from typing import List
 from mr_spline import SplineFit
 
 
-def smoother(df: pd.DataFrame, smooth_var_set: List[str], deaths_threshold: int,
-             daily: bool, log: bool, n_draws: int = 1000) -> pd.DataFrame:
+def smoother(df: pd.DataFrame, smooth_var_set: List[str], 
+             n_draws: int, daily: bool, log: bool) -> pd.DataFrame:
     # get overall knot options (one week apart)
     days = df.index.values
     week_knots = np.arange(days[0], days[-1], 7)[1:]
@@ -15,7 +15,6 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str], deaths_threshold: int,
     # extract inputs
     keep_idx = ~df[smooth_var_set].isnull().all(axis=1)
     no_na_idx = ~df[smooth_var_set].isnull().any(axis=1)
-    above_thresh = df.loc[keep_idx, smooth_var_set].values * df.loc[keep_idx, ['population']].values >= deaths_threshold
     y = df.loc[keep_idx, smooth_var_set].values
     if daily:
         y[1:] = np.diff(y, axis=0)
@@ -56,7 +55,7 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str], deaths_threshold: int,
     # get uncertainty
     smooth_y = np.array([smooth_y]).T
     residuals = y - smooth_y
-    residuals = residuals[~np.isnan(residuals)]  # above_thresh & 
+    residuals = residuals[~np.isnan(residuals)]
     mad = np.median(np.abs(residuals))
     std = mad * 1.4826
     draws = np.random.normal(0, std, (n_draws, smooth_y.size))
