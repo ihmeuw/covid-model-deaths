@@ -39,6 +39,10 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     case_df, death_df, pop_df = load_cases_deaths_pop(inputs_version)
     test_df = load_testing(testing_version)
     
+    # locations we are dropping -- Cueta (too few deaths), Melilla (too few deaths)
+    drop_locs = [60369, 60373]
+    loc_df = loc_df.loc[~loc_df['location_id'].isin(drop_locs)].reset_index(drop=True)
+    
     # identify locations for which we do not have all data
     missing_cases = find_missing_locations(case_df, 'cases', loc_df)
     missing_deaths = find_missing_locations(death_df, 'deaths', loc_df)

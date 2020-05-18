@@ -58,7 +58,8 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str], deaths_threshold: int,
     residuals = y - smooth_y
     residuals = residuals[above_thresh & ~np.isnan(residuals)]
     mad = np.median(np.abs(residuals))
-    draws = np.random.normal(0, mad, n_draws)
+    std = mad * 1.4826
+    draws = np.random.normal(0, std, n_draws)
     draws = np.sort(draws)
     draws = np.array([draws])
     draws = smooth_y + draws
