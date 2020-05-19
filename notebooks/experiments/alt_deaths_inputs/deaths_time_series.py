@@ -79,52 +79,26 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     var_dict = {'death_var':'Death rate',
                 'case_var':'Confirmed case rate',
                 'test_var':'Testing rate'}
-    ln_cumul_df = (df.groupby('location_id', as_index=False)
-                   .apply(lambda x: cfr_model(x, 
-                                              deaths_threshold=5, 
-                                              daily=False, log=True, 
-                                              **var_dict))
-                   .reset_index(drop=True))
-    cumul_df = (df.groupby('location_id', as_index=False)
-                .apply(lambda x: cfr_model(x, 
-                                           deaths_threshold=5, 
-                                           daily=False, log=False, 
-                                           **var_dict))
-                .reset_index(drop=True))
+    df = (df.groupby('location_id', as_index=False)
+         .apply(lambda x: cfr_model(x, 
+                                    deaths_threshold=5, 
+                                    daily=False, log=True, 
+                                    **var_dict))
+         .reset_index(drop=True))
 
     # fit spline to output
-    with PdfPages(f'{out_dir}/model_results_ln_cumul.pdf') as pdf:
-        ln_cumul_draw_df = (ln_cumul_df.groupby('location_id', as_index=False)
-                       .apply(lambda x: synthesize_time_series(
-                           x, 
-                           daily=True, log=True,
-                           n_draws=500,
-                           pdf=pdf, 
-                           **var_dict
-                       ))
-                       .reset_index(drop=True))
-    with PdfPages(f'{out_dir}/model_results_cumul.pdf') as pdf:
-        cumul_draw_df = (cumul_df.groupby('location_id', as_index=False)
-                         .apply(lambda x: synthesize_time_series(
-                             x, 
-                             daily=True, log=True,
-                             n_draws=500,
-                             pdf=pdf, 
-                             **var_dict
-                         ))
-                         .reset_index(drop=True))
-    
-    # combine draws
-    cumul_draw_df = cumul_draw_df.rename(index=str, 
-                                         columns=dict(zip([f'draw_{d}' for d in range(500)],
-                                                           [f'draw_{d+500}' for d in range(500)])))
-    draw_df = ln_cumul_draw_df.merge(cumul_draw_df, how='outer')
+    with PdfPages(f'{out_dir}/model_results.pdf') as pdf:
+        draw_df = (df.groupby('location_id', as_index=False)
+                   .apply(lambda x: synthesize_time_series(
+                       x, 
+                       daily=True, log=True,
+                       pdf=pdf, 
+                       **var_dict
+                   ))
+                   .reset_index(drop=True))
 
     # save output
-    ln_cumul_df.to_csv(f'{out_dir}/model_data_ln_cumul.csv', index=False)
-    cumul_df.to_csv(f'{out_dir}/model_data_cumul.csv', index=False)
-    ln_cumul_draw_df.to_csv(f'{out_dir}/model_results_ln_cumul.csv', index=False)
-    cumul_draw_df.to_csv(f'{out_dir}/model_results_cumul.csv', index=False)
+    df.to_csv(f'{out_dir}/model_data.csv', index=False)
     draw_df.to_csv(f'{out_dir}/model_results.csv', index=False)
 
 
