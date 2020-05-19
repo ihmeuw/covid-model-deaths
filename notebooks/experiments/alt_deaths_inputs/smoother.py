@@ -26,8 +26,7 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
 
     if y[~np.isnan(y)].ptp() > 1e-10 and x.ptp() > 7:
         # determine knots
-        #x_knots = [i for i in week_knots if i in x[1:-1][no_na_idx[1:-1]]]
-        x_knots = np.percentile(x[no_na_idx], (25, 50, 72.5, 95)).tolist()
+        x_knots = np.percentile(x[no_na_idx], (15, 50, 85)).tolist()
         x_knots = np.array([x[0]] + x_knots + [x[-1]]) / x.max()
 
         # get smoothed curve (dropping NAs, inflating variance for deaths from cases - ASSUMES THAT IS SECOND COLUMN)
