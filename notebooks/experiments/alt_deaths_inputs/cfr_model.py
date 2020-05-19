@@ -51,6 +51,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
         indep_vars=['intercept', adj_vars[test_var]], 
         spline_options={
                 'spline_knots': np.array([0., 0.33, 0.67, 1.]),
+                'spline_knots_type': 'frequency',
                 'spline_degree': 3,
                 'spline_r_linear':True,
                 'spline_l_linear':True,
