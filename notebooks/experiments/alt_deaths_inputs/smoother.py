@@ -40,13 +40,30 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
         y_fit = y_fit[non_na_idx]
         obs_data = obs_data[non_na_idx]
         x_fit = x_fit[non_na_idx]
-        mr_mod = SplineFit(x_fit, y_fit, obs_data,
-                           {'spline_knots': x_knots,
-                            'spline_degree': 3,
-                            'spline_r_linear':True,
-                            'spline_l_linear':True})
-        mr_mod.fit_spline()
-        smooth_y = mr_mod.predict(x)
+        mod_df = pd.DataFrame({
+            'y':y_fit,
+            'intercept':1,
+            'x':x_fit,
+            'observed':obs_data
+        })
+        mod_df['observed'] = mod_df['observed'].astype(bool)
+        mr_mod = SplineFit(
+            data=mod_df, 
+            dep_var='y',
+            spline_var='x',
+            indep_vars=['intercept'], 
+            spline_options={
+                    'spline_knots': x_knots,
+                    'spline_degree': 3,
+                    'spline_r_linear':True,
+                    'spline_l_linear':True,
+                },
+            scale_se=True,
+            observed_var='observed',
+            pseudo_se_multiplier=1.5
+        )
+        mr_mod.fit_model()
+        smooth_y = mr_mod.predict(pd.DataFrame({'intercept':1, 'x': x}))
     else:
         # don't smooth if no difference
         smooth_y = y

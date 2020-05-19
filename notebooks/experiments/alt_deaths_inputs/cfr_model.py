@@ -3,56 +3,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Dict
-from slime.core import MRData
-from slime.model import CovModel, CovModelSet, MRModel
 from smoother import smoother
+from mr_spline import SplineFit
 
-def slimer(mod_df: pd.DataFrame, 
-           death_var: str, case_var: str, test_var: str,
-           log: bool, pred_df: pd.DataFrame):
-    # model data
-    mod_df['group'] = 0
-    if log:
-        col_covs = ['intercept', case_var, test_var]
-    else:
-        col_covs = [case_var, test_var]
-    mrdata = MRData(mod_df,
-                    col_group='group',
-                    col_obs=death_var,
-                    col_covs=col_covs)
     
-    # set up covariates
-    case_cov_model = CovModel(case_var,
-                              use_re=False,
-                              bounds=np.array([0., np.inf]))
-    test_cov_model = CovModel(test_var,
-                              use_re=False,
-                              bounds=np.array([-np.inf, 0.]))
-    if log:
-        int_cov_model = CovModel('intercept',
-                                 use_re=False,
-                                 gprior=np.array([0, np.inf]))
-        cov_models = CovModelSet([int_cov_model, case_cov_model, test_cov_model])
-        variables = ['intercept', case_var, test_var]
-    else:
-        cov_models = CovModelSet([case_cov_model, test_cov_model])
-        variables = [case_var, test_var]
-    
-    # run model
-    model = MRModel(mrdata, cov_models)
-    model.fit_model()
-    model_params = model.result[0]
-    
-    # predict
-    pred_df['Predicted model death rate'] = 0
-    for variable, param in zip(variables, model_params):
-        pred_df[f'{variable} coefficient'] = param
-        pred_df['Predicted model death rate'] += pred_df[variable] * pred_df[f'{variable} coefficient']
-    
-    return pred_df
-    
-    
-def cdr_model(df: pd.DataFrame, deaths_threshold: int, 
+def cfr_model(df: pd.DataFrame, deaths_threshold: int, 
               daily: bool, log: bool, 
               death_var: str, case_var: str, test_var: str) -> pd.DataFrame:
     # add intercept
@@ -89,12 +44,22 @@ def cdr_model(df: pd.DataFrame, deaths_threshold: int,
         raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths in {df['location_name'][0]}")
 
     # run model and predict
-    df = slimer(
-        mod_df, 
-        adj_vars[death_var], adj_vars[case_var], adj_vars[test_var], 
-        log,
-        df
+    mr_mod = SplineFit(
+        data=mod_df, 
+        dep_var=adj_vars[death_var],
+        spline_var=adj_vars[case_var],
+        indep_vars=['intercept', adj_vars[test_var]], 
+        spline_options={
+                'spline_knots': np.array([0., 0.33, 0.67, 1.]),
+                'spline_degree': 3,
+                'spline_r_linear':True,
+                'spline_l_linear':True,
+                'prior_beta_uniform':np.array([0., np.inf]),
+            },
+        scale_se=False
     )
+    mr_mod.fit_model()
+    df['Predicted model death rate'] = mr_mod.predict(df)
     df['Predicted death rate'] = df['Predicted model death rate']
     if log:
         df['Predicted death rate'] = np.exp(df['Predicted death rate'])
@@ -141,19 +106,14 @@ def synthesize_time_series(df: pd.DataFrame,
     
     # plot
     if pdf is not None:
-        coef_cols = [i for i in df.columns if i.endswith('coefficient') if not i.startswith('intercept')]
-        model_params = df[coef_cols].loc[0].to_dict()
         plotter(df, 
                 [death_var, case_var, test_var],
-                coef_cols,
-                model_params, 
                 pdf)
     
     return draw_df
 
 
-def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str], 
-            model_params: dict, pdf):
+def plotter(df: pd.DataFrame, unadj_vars: List[str], pdf):
     # set up plot
     sns.set_style('whitegrid')
     fig, ax = plt.subplots(2, 3, figsize=(24, 16))
@@ -165,18 +125,12 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], adj_vars: List[str],
     smoothed_pred_lines = {'color':'firebrick', 'alpha':0.75, 'linewidth':3}
     smoothed_pred_area = {'color':'firebrick', 'alpha':0.25}
 
-    for i, (smooth_variable, model_variable) in enumerate(zip(unadj_vars, [''] + adj_vars)):
-        # get coefficients (think of a more elegant way of doing this)
-        if model_variable in list(model_params.keys()):
-            param_label = f" - coefficient: {np.round(model_params[model_variable], 8)}"
-        else:
-            param_label = ''
-        
+    for i, smooth_variable in enumerate(unadj_vars):
         # cumulative
         raw_variable = smooth_variable.replace('Smoothed ', '').capitalize()
         ax[0, i].plot(df['Date'], df[raw_variable] * df['population'], **raw_lines)
         ax[0, i].scatter(df['Date'], df[raw_variable] * df['population'], **raw_points)
-        ax[0, i].set_title(f"{raw_variable.replace(' rate', '')}" + param_label, fontsize=12)
+        ax[0, i].set_title(f"{raw_variable.replace(' rate', '')}", fontsize=12)
         if i == 0:
             ax[0, i].set_ylabel(f'Cumulative', fontsize=10)
 
