@@ -259,12 +259,13 @@ def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
 
 def compile_draws(loc_df: pd.DataFrame, submodel_dict: Dict,
                   obs_df: pd.DataFrame, threshold_dates: pd.DataFrame, age_pop_df: pd.DataFrame
-                  ) -> Tuple[List[pd.DataFrame], List[pd.DataFrame], List, List, List[pd.DataFrame]]:
+                  ) -> Tuple[List[pd.DataFrame], List[pd.DataFrame], List, List, List[pd.DataFrame], List[int]]:
     draw_dfs = []
     past_draw_dfs = []
     models_used = []
     days_ = []
     ensemble_draws_dfs = []
+    failed_locs = []
     for _, (location_id, location_name) in tqdm.tqdm(loc_df[[COLUMNS.location_id, COLUMNS.location]].iterrows(), total=len(loc_df)):
         # # identify peak duration
         # if int(location_id) in peak_dur_df['location_id'].to_list():
@@ -293,13 +294,14 @@ def compile_draws(loc_df: pd.DataFrame, submodel_dict: Dict,
         except Exception as e:
             print(e)
             print('No draws for ', location_name, location_id)
+            failed_locs.append(location_id)
             continue
         draw_dfs.append(draw_df)
         past_draw_dfs.append(past_draw_df)
         models_used.append(model_used)
         days_.append(days)
         ensemble_draws_dfs.append(ensemble_draws)
-    return draw_dfs, past_draw_dfs, models_used, days_, ensemble_draws_dfs
+    return draw_dfs, past_draw_dfs, models_used, days_, ensemble_draws_dfs, failed_locs
 
 
 def average_draws(raw_draw_path: str,
