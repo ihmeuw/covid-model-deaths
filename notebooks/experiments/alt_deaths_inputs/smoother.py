@@ -69,6 +69,8 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
     if daily:
         draws = draws.cumsum(axis=0)
     draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
+    draw_df['Smooth log'] = log
+    draw_df['Smooth daily'] = daily
     draw_df = pd.concat([draw_df, pd.DataFrame(draws, columns=[f'draw_{d}' for d in range(n_draws)])], axis=1)
         
     return draw_df

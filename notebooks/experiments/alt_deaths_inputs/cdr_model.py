@@ -44,10 +44,10 @@ def slimer(mod_df: pd.DataFrame,
     model_params = model.result[0]
     
     # predict
-    pred_df['Predicted death rate'] = 0
+    pred_df['Predicted model death rate'] = 0
     for variable, param in zip(variables, model_params):
         pred_df[f'{variable} coefficient'] = param
-        pred_df['Predicted death rate'] += pred_df[variable] * pred_df[f'{variable} coefficient']
+        pred_df['Predicted model death rate'] += pred_df[variable] * pred_df[f'{variable} coefficient']
     
     return pred_df
     
@@ -73,6 +73,8 @@ def cdr_model(df: pd.DataFrame, deaths_threshold: int,
             df.loc[df[mod_var] < floor, mod_var] = floor
             df[mod_var] = np.log(df[mod_var])
         adj_vars.update({orig_var:mod_var})
+    df['Model log'] = log
+    df['Model daily'] = daily
 
     # keep what we can use to predict (subset further to fitting dataset below)
     non_na = ~df[list(adj_vars.values())[1:]].isnull().any(axis=1)
@@ -93,6 +95,7 @@ def cdr_model(df: pd.DataFrame, deaths_threshold: int,
         log,
         df
     )
+    df['Predicted death rate'] = df['Predicted model death rate']
     if log:
         df['Predicted death rate'] = np.exp(df['Predicted death rate'])
     if daily:
