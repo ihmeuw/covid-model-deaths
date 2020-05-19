@@ -86,7 +86,7 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                                               **var_dict))
                    .reset_index(drop=True))
     cumul_df = (df.groupby('location_id', as_index=False)
-                .apply(lambda x: cdr_model(x, 
+                .apply(lambda x: cfr_model(x, 
                                            deaths_threshold=5, 
                                            daily=False, log=False, 
                                            **var_dict))
