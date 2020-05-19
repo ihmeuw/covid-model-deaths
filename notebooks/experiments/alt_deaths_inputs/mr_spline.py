@@ -31,7 +31,7 @@ class SplineFit:
         else:
             data['obs_se'] = 1
         if observed_var:
-            data.loc[data[observed_var], 'obs_se'] *= pseudo_se_multiplier
+            data.loc[~data[observed_var], 'obs_se'] *= pseudo_se_multiplier
 
         # create mrbrt object
         data['study_id'] = 1
