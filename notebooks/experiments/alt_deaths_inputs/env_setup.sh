@@ -7,4 +7,4 @@ git clone https://github.com/ihmeuw-msca/MRTool.git && \
 cd MRTool && git checkout seiir_model && python setup.py install && cd .. && \
 git clone https://github.com/zhengp0/SLIME.git && \
 cd SLIME && python setup.py install && \
-cd .. && rm -rf limetr && rm -rf MRTool && rm -rf SLIME
+cd .. && rm -rf limetr MRTool SLIME
