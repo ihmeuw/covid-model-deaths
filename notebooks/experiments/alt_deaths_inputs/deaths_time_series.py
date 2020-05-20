@@ -1,15 +1,15 @@
 import os
 import sys
+import argparse
 from functools import reduce
 import pandas as pd
 import numpy as np
 import dill as pickle
 from typing import List, Dict
 
-from matplotlib.backends.backend_pdf import PdfPages
-
 from front_end_loader import load_locations, load_cases_deaths_pop, load_testing
 from cfr_model import cfr_model, synthesize_time_series
+from pdf_merger import pdf_merger
 
 import warnings
 warnings.simplefilter('ignore')
@@ -35,7 +35,7 @@ def find_missing_locations(df: pd.DataFrame, measure: str, loc_df: pd.DataFrame)
     
 
 def main(location_set_version_id: int, inputs_version: str, testing_version: str,
-         run_label: str, n_holdout_days: int = 0):
+         run_label: str, n_holdout_days: int):
     # set up out dir
     out_dir = f'/ihme/covid-19/deaths/dev/{run_label}'
     if os.path.exists(out_dir):
@@ -43,6 +43,12 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
         pass
     else:
         os.mkdir(out_dir)
+    plot_dir = f'{out_dir}/plots'
+    if os.path.exists(plot_dir):
+        #raise ValueError('Directory already exists.')
+        pass
+    else:
+        os.mkdir(plot_dir)
     
     # load all data we have
     loc_df = load_locations(location_set_version_id)
@@ -88,15 +94,15 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
          .reset_index(drop=True))
 
     # fit spline to output
-    with PdfPages(f'{out_dir}/model_results.pdf') as pdf:
-        draw_df = (df.groupby('location_id', as_index=False)
-                   .apply(lambda x: synthesize_time_series(
-                       x, 
-                       daily=True, log=True,
-                       pdf=pdf, 
-                       **var_dict
-                   ))
-                   .reset_index(drop=True))
+    draw_df = (df.groupby('location_id', as_index=False)
+               .apply(lambda x: synthesize_time_series(
+                   x, 
+                   daily=True, log=True,
+                   plot_dir=plot_dir, 
+                   **var_dict
+               ))
+               .reset_index(drop=True))
+    pdf_merger(indir=plot_dir, outfile=f'{out_dir}/model_results.pdf')
 
     # save output
     df.to_csv(f'{out_dir}/model_data.csv', index=False)
@@ -104,4 +110,14 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
+    # take args
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--location_set_version_id', help='IHME location hierarchy.', type=int)
+    parser.add_argument('--inputs_version', help='Version tag for `model-inputs`.', type=str)
+    parser.add_argument('--testing_version', help='Version tag for `testing-outputs`.', type=str)
+    parser.add_argument('--run_label', help='Version tag for model results.', type=str)
+    parser.add_argument('--n_holdout_days', help='Number of days of data to drop.', type=int, default=0)
+    args = parser.parse_args()
+    
+    # run model
+    main(**vars(args))

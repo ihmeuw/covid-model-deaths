@@ -14,7 +14,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
     orig_cols = df.columns.to_list()
     df['intercept'] = 1
 
-    # log transform, setting floor of 0.1 per population
+    # log transform, setting floor of 0.01 per population
     df = df.sort_values('Date').reset_index(drop=True)
     floor = 0.01 / df['population'].values[0]
     adj_vars = {}
@@ -87,7 +87,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
 def synthesize_time_series(df: pd.DataFrame, 
                            daily: bool, log: bool, 
                            death_var: str, case_var: str, test_var: str,
-                           n_draws: int = 1000, pdf=None) -> pd.DataFrame:
+                           n_draws: int = 1000, plot_dir: str =None) -> pd.DataFrame:
     # spline on output
     draw_df = smoother(df.copy().reset_index(drop=True), ['Death rate', 'Predicted death rate'], n_draws, daily, log)
     draw_cols = [col for col in draw_df.columns if col.startswith('draw_')]
@@ -120,15 +120,15 @@ def synthesize_time_series(df: pd.DataFrame,
     del draw_df['population']
     
     # plot
-    if pdf is not None:
+    if plot_dir is not None:
         plotter(df, 
                 [death_var, case_var, test_var],
-                pdf)
+                f"{plot_dir}/{df['location_id'][0]}.pdf")
     
     return draw_df
 
 
-def plotter(df: pd.DataFrame, unadj_vars: List[str], pdf):
+def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
     # set up plot
     sns.set_style('whitegrid')
     fig, ax = plt.subplots(2, 3, figsize=(24, 16))
@@ -192,6 +192,6 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], pdf):
         
     fig.suptitle(df['location_name'].values[0], y=1.0025, fontsize=14)
     fig.tight_layout()
-    pdf.savefig()
+    fig.savefig(plot_file, bbox_inches='tight')
     plt.close(fig)
     
