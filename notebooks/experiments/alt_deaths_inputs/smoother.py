@@ -19,7 +19,7 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
     if daily:
         y[1:] = np.diff(y, axis=0)
     if log:
-        floor = 0.1 / df['population'][0]
+        floor = 0.01 / df['population'][0]
         y[y < floor] = floor
         y = np.log(y)
     x = df.index[keep_idx].values

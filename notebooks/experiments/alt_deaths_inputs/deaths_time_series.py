@@ -23,7 +23,7 @@ def holdout_days(df: pd.DataFrame, n_holdout_days: int) -> pd.DataFrame:
     del df['last_date']
     
     return df
-    
+
 
 def find_missing_locations(df: pd.DataFrame, measure: str, loc_df: pd.DataFrame) -> List[int]:
     missing_list = list(set(loc_df['location_id']) - set(df['location_id'].unique()))
@@ -54,15 +54,15 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     death_df = holdout_days(death_df, n_holdout_days)
     test_df = holdout_days(test_df, n_holdout_days)
     
-    # locations we are dropping -- Cueta (too few deaths), Melilla (too few deaths)
-    drop_locs = [60369, 60373]
-    loc_df = loc_df.loc[~loc_df['location_id'].isin(drop_locs)].reset_index(drop=True)
-    
     # identify locations for which we do not have all data
     missing_cases = find_missing_locations(case_df, 'cases', loc_df)
     missing_deaths = find_missing_locations(death_df, 'deaths', loc_df)
     missing_testing = find_missing_locations(test_df, 'testing', loc_df)
     missing_locations = list(set(missing_cases + missing_deaths + missing_testing))
+    
+    # add some poorly behaving locations to missing list
+    # Assam (4843); 
+    missing_locations += [4843]
     
     # combine data
     df = reduce(lambda x, y: pd.merge(x, y, how='outer'),
@@ -81,7 +81,8 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                 'test_var':'Testing rate'}
     df = (df.groupby('location_id', as_index=False)
          .apply(lambda x: cfr_model(x, 
-                                    deaths_threshold=5, 
+                                    deaths_threshold=max(1,
+                                                         int((x['Death rate']*x['population']).max()*0.01)), 
                                     daily=False, log=True, 
                                     **var_dict))
          .reset_index(drop=True))

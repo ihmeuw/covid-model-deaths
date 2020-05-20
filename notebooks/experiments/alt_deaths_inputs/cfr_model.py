@@ -16,7 +16,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
 
     # log transform, setting floor of 0.1 per population
     df = df.sort_values('Date').reset_index(drop=True)
-    floor = 0.1 / df['population'].values[0]
+    floor = 0.01 / df['population'].values[0]
     adj_vars = {}
     for orig_var in [death_var, case_var, test_var]:
         mod_var = f'Model {orig_var.lower()}'
@@ -37,26 +37,40 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
 
     # lose NAs in deaths as well for modeling
     mod_df = df.copy()
-    above_thresh = mod_df[death_var] * df['population'] >= deaths_threshold
+    above_thresh = (mod_df[death_var] * df['population']) >= deaths_threshold
     non_na = ~mod_df[adj_vars[death_var]].isnull()
     mod_df = mod_df.loc[above_thresh & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     if len(mod_df) < 3:
         raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths in {df['location_name'][0]}")
 
     # run model and predict
-    mr_mod = SplineFit(
-        data=mod_df, 
-        dep_var=adj_vars[death_var],
-        spline_var=adj_vars[case_var],
-        indep_vars=['intercept', adj_vars[test_var]], 
+    x_knots_1 = np.array([0., 0.5, 1.])
+    x_knots_2 = np.array([0., 0.33, 0.67, 1.])
+    unique_knots = np.unique(np.quantile(mod_df[adj_vars[case_var]], x_knots_2))
+    if len(mod_df) > 9 & unique_knots.size == 4:
+        # 3 knots, linear tails with cubic center
         spline_options={
-                'spline_knots': np.array([0., 0.33, 0.67, 1.]),
+                'spline_knots': x_knots_2,
                 'spline_knots_type': 'frequency',
                 'spline_degree': 3,
                 'spline_r_linear':True,
                 'spline_l_linear':True,
                 'prior_beta_uniform':np.array([0., np.inf]),
-            },
+            }
+    else:
+        # linear spline
+        spline_options={
+                'spline_knots': x_knots_1,
+                'spline_knots_type': 'frequency',
+                'spline_degree': 1,
+                'prior_beta_uniform':np.array([0., np.inf]),
+            }
+    mr_mod = SplineFit(
+        data=mod_df, 
+        dep_var=adj_vars[death_var],
+        spline_var=adj_vars[case_var],
+        indep_vars=['intercept', adj_vars[test_var]], 
+        spline_options=spline_options,
         scale_se=False
     )
     mr_mod.fit_model()
