@@ -180,8 +180,8 @@ class Drawer:
             try:
                 model_used, days, draws, past_pred = self._collect_draws(ensemble_dir, n_draws)
             except:
-                print("No draws in ", ensemble_dir, self.location_name, self.location_id)
-                continue
+                print("No draws in ", ensemble_dir, self.location_name, self.location_id, ',dropping location.')
+                raise ValueError
             ensemble_draws.append(draws)
             ensemble_past.append(past_pred)
         if not ensemble_draws:
