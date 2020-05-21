@@ -48,7 +48,8 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
     x_knots_1 = np.array([0., 0.5, 1.])
     x_knots_2 = np.array([0., 0.33, 0.67, 1.])
     unique_knots = np.unique(np.quantile(mod_df[adj_vars[case_var]], x_knots_2))
-    if len(mod_df) > 9 and unique_knots.size == 4:
+    has_20 = (df[death_var] * df['population']).max() > 20
+    if len(mod_df) > 9 and has_20 and unique_knots.size == 4:
         # 3 knots, linear tails with cubic center
         spline_options={
                 'spline_knots': x_knots_2,
