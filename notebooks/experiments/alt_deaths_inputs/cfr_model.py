@@ -72,7 +72,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
         data=mod_df, 
         dep_var=adj_vars[death_var],
         spline_var=adj_vars[case_var],
-        indep_vars=['intercept', adj_vars[test_var]], 
+        indep_vars=['intercept'],  # , adj_vars[test_var]
         spline_options=spline_options,
         scale_se=False
     )
