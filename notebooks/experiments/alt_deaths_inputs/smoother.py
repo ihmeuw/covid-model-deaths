@@ -57,7 +57,7 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
                     'spline_knots_type': 'domain',
                     'spline_degree': 3,
                     'spline_r_linear':True,
-                    'spline_l_linear':True,
+                    'spline_l_linear':True
                 },
             scale_se=True,
             observed_var='observed',

@@ -48,7 +48,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
     x_knots_1 = np.array([0., 0.5, 1.])
     x_knots_2 = np.array([0., 0.33, 0.67, 1.])
     unique_knots = np.unique(np.quantile(mod_df[adj_vars[case_var]], x_knots_2))
-    if len(mod_df) > 9 & unique_knots.size == 4:
+    if len(mod_df) > 9 and unique_knots.size == 4:
         # 3 knots, linear tails with cubic center
         spline_options={
                 'spline_knots': x_knots_2,
@@ -56,6 +56,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
                 'spline_degree': 3,
                 'spline_r_linear':True,
                 'spline_l_linear':True,
+                'prior_spline_monotonicity':'increasing',
                 'prior_beta_uniform':np.array([0., np.inf]),
             }
     else:
@@ -64,6 +65,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
                 'spline_knots': x_knots_1,
                 'spline_knots_type': 'frequency',
                 'spline_degree': 1,
+                'prior_spline_monotonicity':'increasing',
                 'prior_beta_uniform':np.array([0., np.inf]),
             }
     mr_mod = SplineFit(
