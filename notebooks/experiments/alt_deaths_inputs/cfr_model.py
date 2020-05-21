@@ -38,10 +38,11 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
     # lose NAs in deaths as well for modeling
     mod_df = df.copy()
     above_thresh = (mod_df[death_var] * df['population']) >= deaths_threshold
+    has_cases = (mod_df[case_var] * df['population']) >= 1
     non_na = ~mod_df[adj_vars[death_var]].isnull()
-    mod_df = mod_df.loc[above_thresh & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
+    mod_df = mod_df.loc[above_thresh & has_cases & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     if len(mod_df) < 3:
-        raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths in {df['location_name'][0]}")
+        raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths and 1+ cases in {df['location_name'][0]}")
 
     # run model and predict
     x_knots_1 = np.array([0., 0.5, 1.])

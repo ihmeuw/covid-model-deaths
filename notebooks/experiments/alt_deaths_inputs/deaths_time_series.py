@@ -67,8 +67,8 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     missing_locations = list(set(missing_cases + missing_deaths + missing_testing))
     
     # add some poorly behaving locations to missing list
-    # Assam (4843); 
-    missing_locations += [4843]
+    # Assam (4843); Meghalaya (4862)
+    missing_locations += [4843, 4862]
     
     # combine data
     df = reduce(lambda x, y: pd.merge(x, y, how='outer'),
@@ -78,7 +78,15 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                  pop_df[['location_id', 'population']]])
     df = loc_df[['location_id', 'location_name']].merge(df)
     not_missing = ~df['location_id'].isin(missing_locations)
-    df = df.loc[not_missing]  
+    df = df.loc[not_missing]
+    
+    # must have at least two cases and deaths
+    df['Cases'] = df['Confirmed case rate'] * df['population']
+    df = df.loc[df.groupby('location_id')['Cases'].transform(max) >= 2].reset_index(drop=True)
+    del df['Cases']
+    df['Deaths'] = df['Death rate'] * df['population']
+    df = df.loc[df.groupby('location_id')['Deaths'].transform(max) >= 2].reset_index(drop=True)
+    del df['Deaths']
     
     # fit model
     np.random.seed(15243)
