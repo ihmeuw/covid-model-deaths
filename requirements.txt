@@ -6,7 +6,7 @@ cached-property==1.5.1
 certifi==2020.4.5.1
 chardet==3.0.4
 contextvars==2.4
-git+https://github.com/ihmeuw-msca/CurveFit@product#egg=curvefit
+git+https://github.com/ihmeuw-msca/CurveFit@product_develop#egg=curvefit
 cycler==0.10.0
 db-queries==22.0.8
 db-tools==0.9.1
