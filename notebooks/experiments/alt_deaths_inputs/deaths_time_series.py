@@ -63,8 +63,8 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     # identify locations for which we do not have all data
     missing_cases = find_missing_locations(case_df, 'cases', loc_df)
     missing_deaths = find_missing_locations(death_df, 'deaths', loc_df)
-    missing_testing = find_missing_locations(test_df, 'testing', loc_df)
-    missing_locations = list(set(missing_cases + missing_deaths + missing_testing))
+    #missing_testing = find_missing_locations(test_df, 'testing', loc_df)
+    missing_locations = list(set(missing_cases + missing_deaths))  #  + missing_testing
     
     # add some poorly behaving locations to missing list
     # Assam (4843); Meghalaya (4862)
@@ -90,9 +90,8 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     
     # fit model
     np.random.seed(15243)
-    var_dict = {'death_var':'Death rate',
-                'case_var':'Confirmed case rate',
-                'test_var':'Testing rate'}
+    var_dict = {'dep_var':'Death rate',
+                'spline_var':'Confirmed case rate'}
     df = (df.groupby('location_id', as_index=False)
          .apply(lambda x: cfr_model(x, 
                                     deaths_threshold=max(1,

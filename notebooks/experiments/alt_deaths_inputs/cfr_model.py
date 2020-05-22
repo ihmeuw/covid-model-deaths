@@ -9,7 +9,7 @@ from mr_spline import SplineFit
     
 def cfr_model(df: pd.DataFrame, deaths_threshold: int, 
               daily: bool, log: bool, 
-              death_var: str, case_var: str, test_var: str) -> pd.DataFrame:
+              dep_var: str, spline_var: str, indep_vars: List[str] = []) -> pd.DataFrame:
     # add intercept
     orig_cols = df.columns.to_list()
     df['intercept'] = 1
@@ -18,7 +18,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
     df = df.sort_values('Date').reset_index(drop=True)
     floor = 0.01 / df['population'].values[0]
     adj_vars = {}
-    for orig_var in [death_var, case_var, test_var]:
+    for orig_var in [dep_var, spline_var] + indep_vars:
         mod_var = f'Model {orig_var.lower()}'
         df[mod_var] = df[orig_var]
         if daily:
@@ -37,18 +37,18 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
 
     # lose NAs in deaths as well for modeling
     mod_df = df.copy()
-    above_thresh = (mod_df[death_var] * df['population']) >= deaths_threshold
-    has_cases = (mod_df[case_var] * df['population']) >= 1
-    non_na = ~mod_df[adj_vars[death_var]].isnull()
-    mod_df = mod_df.loc[above_thresh & has_cases & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
+    above_thresh = (mod_df[dep_var] * df['population']) >= deaths_threshold
+    has_x = (mod_df[spline_var] * df['population']) >= 1
+    non_na = ~mod_df[adj_vars[dep_var]].isnull()
+    mod_df = mod_df.loc[above_thresh & has_x & non_na, ['intercept'] + list(adj_vars.values())].reset_index(drop=True)
     if len(mod_df) < 3:
         raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths and 1+ cases in {df['location_name'][0]}")
 
     # run model and predict
     x_knots_1 = np.array([0., 0.5, 1.])
     x_knots_2 = np.array([0., 0.33, 0.67, 1.])
-    unique_knots = np.unique(np.quantile(mod_df[adj_vars[case_var]], x_knots_2))
-    has_20 = (df[death_var] * df['population']).max() > 20
+    unique_knots = np.unique(np.quantile(mod_df[adj_vars[spline_var]], x_knots_2))
+    has_20 = (df[dep_var] * df['population']).max() > 20
     if len(mod_df) > 9 and has_20 and unique_knots.size == 4:
         # 3 knots, linear tails with cubic center
         spline_options={
@@ -57,7 +57,6 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
                 'spline_degree': 3,
                 'spline_r_linear':True,
                 'spline_l_linear':True,
-                'prior_spline_monotonicity':'increasing',
                 'prior_beta_uniform':np.array([0., np.inf]),
             }
     else:
@@ -66,14 +65,15 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
                 'spline_knots': x_knots_1,
                 'spline_knots_type': 'frequency',
                 'spline_degree': 1,
-                'prior_spline_monotonicity':'increasing',
                 'prior_beta_uniform':np.array([0., np.inf]),
             }
+    if not daily:
+        spline_options.update({'prior_spline_monotonicity':'increasing'})
     mr_mod = SplineFit(
         data=mod_df, 
-        dep_var=adj_vars[death_var],
-        spline_var=adj_vars[case_var],
-        indep_vars=['intercept'],  # , adj_vars[test_var]
+        dep_var=adj_vars[dep_var],
+        spline_var=adj_vars[spline_var],
+        indep_vars=['intercept'] + list(map(adj_vars.get, indep_vars)),
         spline_options=spline_options,
         scale_se=False
     )
@@ -90,7 +90,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
 
 def synthesize_time_series(df: pd.DataFrame, 
                            daily: bool, log: bool, 
-                           death_var: str, case_var: str, test_var: str,
+                           dep_var: str, spline_var: str, indep_vars: List[str] = [],
                            n_draws: int = 1000, plot_dir: str =None) -> pd.DataFrame:
     # spline on output
     draw_df = smoother(df.copy().reset_index(drop=True), ['Death rate', 'Predicted death rate'], n_draws, daily, log)
@@ -126,7 +126,7 @@ def synthesize_time_series(df: pd.DataFrame,
     # plot
     if plot_dir is not None:
         plotter(df, 
-                [death_var, case_var, test_var],
+                [dep_var, spline_var] + indep_vars,
                 f"{plot_dir}/{df['location_id'][0]}.pdf")
     
     return draw_df
@@ -135,7 +135,7 @@ def synthesize_time_series(df: pd.DataFrame,
 def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
     # set up plot
     sns.set_style('whitegrid')
-    fig, ax = plt.subplots(2, 3, figsize=(24, 16))
+    fig, ax = plt.subplots(2, len(unadj_vars), figsize=(len(unadj_vars)*11, 16))
 
     # aesthetic features
     raw_lines = {'color':'navy', 'alpha':0.5, 'linewidth':3}
