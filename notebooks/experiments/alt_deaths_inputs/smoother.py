@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from scipy import stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List
@@ -75,14 +76,13 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
     residuals = residuals[~np.isnan(residuals)]
     mad = np.median(np.abs(residuals))
     std = mad * 1.4826
-    draws = np.random.normal(0, std, (n_draws, smooth_y.size))
-    draws = smooth_y + draws.T
+    draws = np.random.normal(smooth_y, std, (smooth_y.size, n_draws))
+    #draws = stats.t.rvs(dof, loc=smooth_y, scale=std, size=(smooth_y.size, n_draws))
 
-    # set to linear, make sure mean of linear draws equals linear point estimate, add up cumulative, and create dataframe
+    # set to linear, add up cumulative, and create dataframe
     if log:
+        draws -= draws.var(axis=1, keepdims=True) / 2
         draws = np.exp(draws)
-        smooth_y = np.exp(smooth_y)
-    draws *= (smooth_y / np.array([draws.mean(axis=1)]).T)
     if daily:
         draws = draws.cumsum(axis=0)
     draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
