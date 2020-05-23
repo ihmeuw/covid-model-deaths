@@ -91,7 +91,8 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
     # fit model
     np.random.seed(15243)
     var_dict = {'dep_var':'Death rate',
-                'spline_var':'Confirmed case rate'}
+                'spline_var':'Confirmed case rate',
+                'indep_vars':[]}
     df = (df.groupby('location_id', as_index=False)
          .apply(lambda x: cfr_model(x, 
                                     deaths_threshold=max(1,

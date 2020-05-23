@@ -9,7 +9,7 @@ from mr_spline import SplineFit
     
 def cfr_model(df: pd.DataFrame, deaths_threshold: int, 
               daily: bool, log: bool, 
-              dep_var: str, spline_var: str, indep_vars: List[str] = []) -> pd.DataFrame:
+              dep_var: str, spline_var: str, indep_vars: List[str]) -> pd.DataFrame:
     # add intercept
     orig_cols = df.columns.to_list()
     df['intercept'] = 1
@@ -49,7 +49,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
     x_knots_2 = np.array([0., 0.33, 0.67, 1.])
     unique_knots = np.unique(np.quantile(mod_df[adj_vars[spline_var]], x_knots_2))
     has_20 = (df[dep_var] * df['population']).max() > 20
-    if len(mod_df) > 9 and has_20 and unique_knots.size == 4:
+    if has_20 and unique_knots.size == 4:
         # 3 knots, linear tails with cubic center
         spline_options={
                 'spline_knots': x_knots_2,
@@ -90,7 +90,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
 
 def synthesize_time_series(df: pd.DataFrame, 
                            daily: bool, log: bool, 
-                           dep_var: str, spline_var: str, indep_vars: List[str] = [],
+                           dep_var: str, spline_var: str, indep_vars: List[str],
                            n_draws: int = 1000, plot_dir: str =None) -> pd.DataFrame:
     # spline on output
     draw_df = smoother(df.copy().reset_index(drop=True), ['Death rate', 'Predicted death rate'], n_draws, daily, log)

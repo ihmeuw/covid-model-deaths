@@ -25,9 +25,9 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
         y = np.log(y)
     x = df.index[keep_idx].values
 
-    if y[~np.isnan(y)].ptp() > 1e-10 and x.ptp() > 7:
+    if y[~np.isnan(y)].ptp() > 1e-10:
         # determine knots
-        x_knots = np.percentile(x[no_na_idx], (10, 50, 90)).tolist()
+        x_knots = np.percentile(x[no_na_idx], (5, 25, 50, 75, 95)).tolist()
         x_knots = np.array([x[0]] + x_knots + [x[-1]]) / x.max()
 
         # get smoothed curve (dropping NAs, inflating variance for deaths from cases - ASSUMES THAT IS SECOND COLUMN)
@@ -48,21 +48,24 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
             'observed':obs_data
         })
         mod_df['observed'] = mod_df['observed'].astype(bool)
+        spline_options={
+                'spline_knots': x_knots,
+                'spline_knots_type': 'domain',
+                'spline_degree': 3,
+                'spline_r_linear':True,
+                'spline_l_linear':True
+            }
+        if not daily:
+            spline_options.update({'prior_spline_monotonicity':'increasing'})
         mr_mod = SplineFit(
             data=mod_df, 
             dep_var='y',
             spline_var='x',
             indep_vars=['intercept'], 
-            spline_options={
-                    'spline_knots': x_knots,
-                    'spline_knots_type': 'domain',
-                    'spline_degree': 3,
-                    'spline_r_linear':True,
-                    'spline_l_linear':True
-                },
-            scale_se=True,
+            spline_options=spline_options,
+            scale_se=daily,
             observed_var='observed',
-            pseudo_se_multiplier=1.5
+            pseudo_se_multiplier=1.25
         )
         mr_mod.fit_model()
         smooth_y = mr_mod.predict(pd.DataFrame({'intercept':1, 'x': x}))
@@ -81,8 +84,9 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
 
     # set to linear, add up cumulative, and create dataframe
     if log:
-        draws -= draws.var(axis=1, keepdims=True) / 2
+        #draws -= draws.var(axis=1, keepdims=True) / 2
         draws = np.exp(draws)
+        draws *= np.exp(smooth_y) / draws.mean(axis=1, keepdims=True)
     if daily:
         draws = draws.cumsum(axis=0)
     draw_df = df.loc[x, ['location_id', 'Date', 'population']].reset_index(drop=True)
