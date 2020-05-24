@@ -48,25 +48,15 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
 
     # run model and predict
     has_20 = (df[dep_var] * df['population']).max() > 20
-    x_knots_1 = np.array([0., 0.5, 1.])
-    x_knots_2 = np.array([0., 0.33, 0.67, 1.])
-    n_unique_2 = np.unique(np.quantile(mod_df[adj_vars[spline_var]], x_knots_2)).size
-    x_knots_3 = np.array([0., 0.25, 0.5, 0.75, 1.])
-    n_unique_3 = np.unique(np.quantile(mod_df[adj_vars[spline_var]], x_knots_3)).size
-    if has_20 and n_unique_3 == x_knots_3.size:
-        # 3 knots, linear tails with cubic center
+    x_knots = np.array([0., 0.5, 1.])
+    for x_knots_option in [np.array([0., 0.33, 0.67, 1.]),
+                           np.array([0., 0.25, 0.5, 0.75, 1.])]:
+        if np.unique(np.quantile(mod_df[adj_vars[spline_var]], x_knots_option)).size == x_knots_option.size:
+            x_knots = x_knots_option
+    if has_20 and x_knots.size > 3:
+        # linear tails with cubic center
         spline_options={
-                'spline_knots': x_knots_3,
-                'spline_knots_type': 'frequency',
-                'spline_degree': 3,
-                'spline_r_linear':True,
-                'spline_l_linear':True,
-                'prior_beta_uniform':np.array([0., np.inf]),
-            }
-    elif has_20 and n_unique_2 == x_knots_2.size:
-        # 3 knots, linear tails with cubic center
-        spline_options={
-                'spline_knots': x_knots_2,
+                'spline_knots': x_knots,
                 'spline_knots_type': 'frequency',
                 'spline_degree': 3,
                 'spline_r_linear':True,
@@ -76,7 +66,7 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
     else:
         # linear spline
         spline_options={
-                'spline_knots': x_knots_1,
+                'spline_knots': x_knots,
                 'spline_knots_type': 'frequency',
                 'spline_degree': 1,
                 'prior_beta_uniform':np.array([0., np.inf]),
