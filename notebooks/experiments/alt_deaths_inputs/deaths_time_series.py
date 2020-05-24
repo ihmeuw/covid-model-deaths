@@ -43,6 +43,14 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
         pass
     else:
         os.mkdir(out_dir)
+    # set up model dir
+    model_dir = f'{out_dir}/models'
+    if os.path.exists(model_dir):
+        #raise ValueError('Directory already exists.')
+        pass
+    else:
+        os.mkdir(model_dir)
+    # set up plot dir
     plot_dir = f'{out_dir}/plots'
     if os.path.exists(plot_dir):
         #raise ValueError('Directory already exists.')
@@ -98,6 +106,7 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                                     deaths_threshold=max(1,
                                                          int((x['Death rate']*x['population']).max()*0.01)), 
                                     daily=False, log=True, 
+                                    model_dir=model_dir,
                                     **var_dict))
          .reset_index(drop=True))
 

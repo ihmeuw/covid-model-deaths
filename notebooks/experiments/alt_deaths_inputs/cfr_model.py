@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import dill as pickle
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Dict
@@ -9,7 +10,8 @@ from mr_spline import SplineFit
     
 def cfr_model(df: pd.DataFrame, deaths_threshold: int, 
               daily: bool, log: bool, 
-              dep_var: str, spline_var: str, indep_vars: List[str]) -> pd.DataFrame:
+              dep_var: str, spline_var: str, indep_vars: List[str],
+              model_dir: str) -> pd.DataFrame:
     # add intercept
     orig_cols = df.columns.to_list()
     df['intercept'] = 1
@@ -45,11 +47,23 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
         raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths and 1+ cases in {df['location_name'][0]}")
 
     # run model and predict
+    has_20 = (df[dep_var] * df['population']).max() > 20
     x_knots_1 = np.array([0., 0.5, 1.])
     x_knots_2 = np.array([0., 0.33, 0.67, 1.])
-    unique_knots = np.unique(np.quantile(mod_df[adj_vars[spline_var]], x_knots_2))
-    has_20 = (df[dep_var] * df['population']).max() > 20
-    if has_20 and unique_knots.size == 4:
+    n_unique_2 = np.unique(np.quantile(mod_df[adj_vars[spline_var]], x_knots_2)).size
+    x_knots_3 = np.array([0., 0.25, 0.5, 0.75, 1.])
+    n_unique_3 = np.unique(np.quantile(mod_df[adj_vars[spline_var]], x_knots_3)).size
+    if has_20 and n_unique_3 == x_knots_3.size:
+        # 3 knots, linear tails with cubic center
+        spline_options={
+                'spline_knots': x_knots_3,
+                'spline_knots_type': 'frequency',
+                'spline_degree': 3,
+                'spline_r_linear':True,
+                'spline_l_linear':True,
+                'prior_beta_uniform':np.array([0., np.inf]),
+            }
+    elif has_20 and n_unique_2 == x_knots_2.size:
         # 3 knots, linear tails with cubic center
         spline_options={
                 'spline_knots': x_knots_2,
@@ -84,6 +98,9 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
         df['Predicted death rate'] = np.exp(df['Predicted death rate'])
     if daily:
         df['Predicted death rate'] = df['Predicted death rate'].cumsum()
+    
+    with open(f"{model_dir}/{df['location_id'][0]}.pkl", 'wb') as fwrite:
+        pickle.dump(mr_mod, fwrite, -1)
     
     return df
     
