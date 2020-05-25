@@ -47,14 +47,17 @@ def cfr_model(df: pd.DataFrame, deaths_threshold: int,
         raise ValueError(f"Fewer than 3 days {deaths_threshold}+ deaths and 1+ cases in {df['location_name'][0]}")
 
     # run model and predict
-    has_20 = (df[dep_var] * df['population']).max() > 20
-    x_knots = np.array([0., 0.5, 1.])
-    for x_knots_option in [np.array([0., 0.33, 0.67, 1.]),
-                           np.array([0., 0.25, 0.5, 0.75, 1.])]:
-        if np.unique(np.quantile(mod_df[adj_vars[spline_var]], x_knots_option)).size == x_knots_option.size:
-            x_knots = x_knots_option
-    if has_20 and x_knots.size > 3:
-        # linear tails with cubic center
+    if (df[dep_var] * df['population']).max() > 20:
+        x_knots = np.array([0., 0.33, 0.67, 1.])
+        x_knots_idx = np.unique(np.quantile(mod_df[adj_vars[spline_var]], 
+                                            x_knots),
+                                return_index=True)[1]
+        x_knots = x_knots[x_knots_idx]
+    else:
+        x_knots = np.array([0., 0.5, 1.])
+
+    if x_knots.size > 3:
+        # cubic spline with linear tails
         spline_options={
                 'spline_knots': x_knots,
                 'spline_knots_type': 'frequency',
@@ -151,15 +154,24 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
     smoothed_pred_lines = {'color':'firebrick', 'alpha':0.75, 'linewidth':3}
     smoothed_pred_area = {'color':'firebrick', 'alpha':0.25}
 
+    ax[0, 1].scatter(df['Confirmed case rate'], 
+                     df['Death rate'], 
+                     **raw_points)
+    ax[0, 1].plot(df.loc[~df['Death rate'].isnull(), 'Confirmed case rate'], 
+                  df.loc[~df['Death rate'].isnull(), 'Predicted death rate'], 
+                  **pred_lines)
+    ax[0, 1].set_xlabel('Cumulative case rate', fontsize=10)
+    ax[0, 1].set_ylabel('Cumulative death rate', fontsize=10)
+    
     for i, smooth_variable in enumerate(unadj_vars):
         # cumulative
         raw_variable = smooth_variable.replace('Smoothed ', '').capitalize()
-        ax[0, i].plot(df['Date'], df[raw_variable] * df['population'], **raw_lines)
-        ax[0, i].scatter(df['Date'], df[raw_variable] * df['population'], **raw_points)
-        ax[0, i].set_title(f"{raw_variable.replace(' rate', '')}", fontsize=12)
-        if i == 0:
-            ax[0, i].set_ylabel(f'Cumulative', fontsize=10)
-
+        if 'death' in smooth_variable.lower():
+            ax[0, i].plot(df['Date'], df[raw_variable] * df['population'], **raw_lines)
+            ax[0, i].scatter(df['Date'], df[raw_variable] * df['population'], **raw_points)
+            ax[1, i].set_xlabel('Date', fontsize=10)
+            ax[0, i].set_ylabel(f'Cumulative {raw_variable.lower()}', fontsize=10)
+            
         # daily
         ax[1, i].plot(df['Date'][1:], 
                       np.diff(df[raw_variable]) * df['population'][1:], 
@@ -172,8 +184,7 @@ def plotter(df: pd.DataFrame, unadj_vars: List[str], plot_file: str):
             ax[1, i].set_xlabel('Date', fontsize=10)
         else:
             ax[1, i].set_xlabel('Date (+8 days)', fontsize=10)
-        if i == 0:
-            ax[1, i].set_ylabel('Daily', fontsize=10)
+        ax[1, i].set_ylabel(f'Daily {raw_variable.lower()}', fontsize=10)
 
     # model prediction
     ax[0, 0].plot(df['Date'], df['Predicted death rate'] * df['population'], linestyle='--', **pred_lines)

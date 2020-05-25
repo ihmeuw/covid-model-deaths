@@ -65,7 +65,7 @@ def smoother(df: pd.DataFrame, smooth_var_set: List[str],
             spline_options=spline_options,
             scale_se=daily,
             observed_var='observed',
-            pseudo_se_multiplier=1.25
+            pseudo_se_multiplier=1.33
         )
         mr_mod.fit_model()
         smooth_y = mr_mod.predict(pd.DataFrame({'intercept':1, 'x': x}))

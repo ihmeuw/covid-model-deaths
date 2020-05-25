@@ -102,13 +102,14 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                 'spline_var':'Confirmed case rate',
                 'indep_vars':[]}
     df = (df.groupby('location_id', as_index=False)
-         .apply(lambda x: cfr_model(x, 
-                                    deaths_threshold=max(1,
-                                                         int((x['Death rate']*x['population']).max()*0.01)), 
-                                    daily=False, log=True, 
-                                    model_dir=model_dir,
-                                    **var_dict))
-         .reset_index(drop=True))
+          .apply(lambda x: cfr_model(
+                  x, 
+                  deaths_threshold=max(1,
+                                       int((x['Death rate']*x['population']).max()*0.01)), 
+                  daily=False, log=True, 
+                  model_dir=model_dir,
+                  **var_dict))
+          .reset_index(drop=True))
 
     # fit spline to output
     draw_df = (df.groupby('location_id', as_index=False)
@@ -116,9 +117,10 @@ def main(location_set_version_id: int, inputs_version: str, testing_version: str
                    x, 
                    daily=True, log=True,
                    plot_dir=plot_dir, 
-                   **var_dict
-               ))
+                   **var_dict))
                .reset_index(drop=True))
+    
+    # combine individual location plots
     pdf_merger(indir=plot_dir, outfile=f'{out_dir}/model_results.pdf')
 
     # save output
