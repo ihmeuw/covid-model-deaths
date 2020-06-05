@@ -87,9 +87,10 @@ class LeadingIndicator:
         
         # keep last 8 days, get avg daily cases and testing from 8-10, then just keep 8
         future_df = df.loc[df['Date'] >= df['Date'].max() - pd.Timedelta(days=8)]
-
+        #print(future_df['Province/State'].unique())
         # use case data if it is less than 3 days behind
         if future_df['Testing rate'].isnull().sum() < 3:
+
             future_df = future_df.sort_values('Date').reset_index(drop=True)
             start_cases = future_df['Daily case rate'][0]
             start_tests = future_df['Daily testing rate'][0]
