@@ -119,7 +119,7 @@ def make_last_day_df(full_df: pd.DataFrame, date_mean_df: pd.DataFrame) -> pd.Da
     last_day_df = last_day_df[[COLUMNS.location_id, COLUMNS.ln_death_rate, COLUMNS.date]].merge(date_mean_df)
     last_day_df[COLUMNS.days] = (last_day_df[COLUMNS.date] - last_day_df[COLUMNS.threshold_date])
     last_day_df[COLUMNS.days] = last_day_df[COLUMNS.days].apply(lambda x: x.days)
-    last_day_df = last_day_df.loc[last_day_df[COLUMNS.days] > 0]
+    last_day_df = last_day_df.loc[last_day_df[COLUMNS.days] >= 0] ## Note that Chris T changed this. 
     return last_day_df[[COLUMNS.location_id, COLUMNS.ln_death_rate, COLUMNS.days]]
 
 
@@ -236,6 +236,7 @@ def submit_models(death_df: pd.DataFrame, age_pop_df: pd.DataFrame,
                     sd_cov_df = sd_cov.get_cov_df(weights=[None], k=k, empirical_weight_source=cov_source,
                                                   R0_file=r0_file)
                 sd_cov_df = constrain_covariates(sd_cov_df, loc_df)
+                sd_cov_df = sd_cov_df.groupby('location_id').head(1) ## Note this change!! full_df.groupby('location_id').head(1)
                 sd_cov_df.to_csv(f'{model_out_dir}/{location_id}_covariate.csv', index=False)
                 if not os.path.exists(f'{model_out_dir}/{location_id}'):
                     os.mkdir(f'{model_out_dir}/{location_id}')
