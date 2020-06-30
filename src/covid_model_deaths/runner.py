@@ -32,8 +32,8 @@ def make_cases_and_backcast_deaths(full_df: pd.DataFrame, death_df: pd.DataFrame
 
     full_df_columns = [COLUMNS.location_id, COLUMNS.state, COLUMNS.country, COLUMNS.date,
                        COLUMNS.confirmed, COLUMNS.confirmed_case_rate]
+    #cases_and_backcast_deaths = full_df[full_df_columns].merge(backcast_deaths_df, on=[COLUMNS.location_id, COLUMNS.date]).reset_index(drop=True)
     cases_and_backcast_deaths = full_df[full_df_columns].merge(backcast_deaths_df, how='outer').reset_index(drop=True)
-
     country_level = cases_and_backcast_deaths[COLUMNS.state].isnull()
     cases_and_backcast_deaths.loc[country_level, COLUMNS.state] = cases_and_backcast_deaths[COLUMNS.country]
     cases_and_backcast_deaths[COLUMNS.location_id] = cases_and_backcast_deaths[COLUMNS.location_id].astype(int)

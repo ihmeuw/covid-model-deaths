@@ -29,7 +29,7 @@ ATOMS_COPPER = 29
 ATOMS_TECHNETIUM = 43
 
 PRED_DAYS = 150
-
+PRED_DAYS = 228
 
 def get_number_of_basis_functions(location_cov):
     sd_cov_cutoff = 1.3

@@ -10,7 +10,7 @@ class Drawer:
     """Aggregates draws and stuff."""
 
     def __init__(self, ensemble_dirs, n_draws_list, location_name, location_id, peak_duration,
-                 obs_df, date_draws, population, final_date='2020-07-15', tag='location_id'):
+                 obs_df, date_draws, population, final_date='2020-10-01', tag='location_id'):
         # get our tagging of location_ids
         if tag == 'location_id':
             if not isinstance(location_id, str) or not location_id.startswith('_'):
